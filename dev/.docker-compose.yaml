@@ -1,0 +1,77 @@
+version: '3.8'
+# 支持部署环境：
+# windows, x86 cpu， nvidia显卡
+x-kaiwu-client:
+  docker_registry: kaiwu.tencentcloudcr.com
+  version_path: ./code/kaiwu.json
+  ide_url: 'http://127.0.0.1:${KAIWU_IDE_PORT}/?folder=/data/projects/${KAIWU_PROJECT_CODE}'
+  extra:
+    back_to_the_realm:
+      extra_cmd: '--profile packing'
+    intelligent_traffic_lights:
+      extra_cmd: '--profile packing'
+    back_to_the_realm_v2:
+      extra_cmd: '--profile packing'
+    intelligent_traffic_lights_v2:
+      extra_cmd: '--profile packing'
+
+services:
+  prometheus-pushgateway:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/monitor/pushgateway_x86:20250609'
+    restart: always
+    command:
+      - --log.level=debug
+      - --persistence.file=/pushgateway/metrics.db
+      - --push.disable-consistency-check
+      - --persistence.interval=5m
+
+  gamecore:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/${KAIWU_PROJECT_CODE}/edu/gamecore_x86:${KAIWU_PROJECT_VERSION}'
+    restart: always
+    volumes:
+      - '${KAIWU_LICENSE_PATH}:/sgame/license.dat'
+    command:
+      - bash
+      - '-c'
+      - 'sh /root/tools/start_dev_client.sh gamecore'
+
+  kaiwu_env:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/${KAIWU_PROJECT_CODE}/edu/kaiwu_env_x86:${KAIWU_PROJECT_VERSION}'
+    restart: always
+    depends_on:
+      - gamecore
+    command:
+      - bash
+      - '-c'
+      - 'sh /root/tools/start_dev_client.sh env'
+    profiles:
+      - packing
+
+  kaiwudrl:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/${KAIWU_PROJECT_CODE}/edu/win_gpu:${KAIWU_PROJECT_VERSION}'
+    volumes:
+      - '${KAIWU_DEV_LOG}:/data/projects/${KAIWU_PROJECT_CODE}/log'
+      - '${KAIWU_CODE_FILE}:/workspace/code'
+    labels:
+      - 'kaiwu=dev-check'
+    environment:
+      use_alloc: 'False'
+      use_rainbow: 'False'
+      use_prometheus: 'False'
+      KAIWU_LANG: ${KAIWU_LANG}
+      prometheus_pushgateway: 'prometheus-pushgateway:9091'
+    depends_on:
+      - gamecore
+    ports:
+      - '${KAIWU_IDE_PORT}:8080'
+    command:
+      - bash
+      - '-c'
+      - 'sh /root/tools/start_dev_client.sh ide'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]

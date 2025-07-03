@@ -7,7 +7,7 @@
 Author: Tencent AI Arena Authors
 """
 
-
+# test
 import numpy as np
 
 
