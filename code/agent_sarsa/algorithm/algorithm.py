@@ -25,7 +25,7 @@ class Algorithm:
     def learn(self, list_sample_data):
         """
         Update the Q-table with the given game data:
-            - list_sample: each sampple is (state, action, reward, next_state, next_action)
+            - list_sample: each sample is (state, action, reward, next_state, next_action)
         Using the following formula to update q value:
             - Q(s,a):= Q(s,a) + lr [R(s,a) + gamma * Q(s',a') - Q(s,a)]
         If next_state is the end, then next_action is -1
