@@ -18,6 +18,10 @@ class Config:
     THETA = 1e-3
     EPISODES = 100
 
+    # Penalty applied when the environment returns zero reward
+    # 当环境奖励为0时给予的惩罚值
+    STEP_PENALTY = 0.1
+
     # dimensionality of the sample
     # 样本维度
     SAMPLE_DIM = 214

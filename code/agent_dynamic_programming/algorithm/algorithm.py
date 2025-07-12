@@ -10,6 +10,7 @@ Author: Tencent AI Arena Authors
 
 import copy
 import numpy as np
+from agent_dynamic_programming.conf.conf import Config
 
 
 class Algorithm:
@@ -271,7 +272,9 @@ class Algorithm:
         try:
             next_state, reward, _ = F[str(state)][str(action)]
             if reward == 0:
-                reward = -1
+                # use a small step penalty instead of a large negative reward
+                # 使用较小的步长惩罚, 以便鼓励探索
+                reward = -Config.STEP_PENALTY
             value = reward + self.gamma * V[next_state]
         except KeyError:
             pass
