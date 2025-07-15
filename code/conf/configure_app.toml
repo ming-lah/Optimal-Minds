@@ -12,7 +12,7 @@ level = "INFO"
 
 # Algorithm to be used
 # 采用的算法
-algo = "sarsa"
+algo = "dynamic_programming"
 
 # Input dimension of reverb samples on learner (Note: different algorithms have different dimensions, e.g., sarsa uses 6)
 # learner上reverb样本的输入维度, 注意不同的算法维度不一样, 比如sarsa的维度是6

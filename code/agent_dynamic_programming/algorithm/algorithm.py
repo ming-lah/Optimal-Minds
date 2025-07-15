@@ -14,6 +14,7 @@ import numpy as np
 
 class Algorithm:
     def __init__(self, gamma, theta, episodes, state_size, action_size, logger):
+        print("init there")
         self.state_size = state_size
         self.action_size = action_size
         self.gamma = gamma
@@ -111,6 +112,7 @@ class Algorithm:
                 - V (np.array): 最优状态值数组
         """
         V = np.zeros(self.state_size)
+        print(f"data of parameters: state_size{self.state_size}, episodes{self.episodes}, gamma{self.gamma}, theta{self.theta}" )
 
         i = 0
         while i < self.episodes:

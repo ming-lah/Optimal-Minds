@@ -37,7 +37,7 @@ algorithm_name_list = [
     "sarsa",
     "diy",
 ]
-algorithm_name = "q_learning"
+algorithm_name = "dynamic_programming"
 
 
 # train
