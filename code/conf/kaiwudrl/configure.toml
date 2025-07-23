@@ -24,7 +24,7 @@ reverb_sampler = "reverb.selectors.Uniform"
 # 下面的是公共配置, 按需修改
 run_mode = "train"
 # 下面是日志文件相关配置
-log_dir = "/data/projects/gorge_walk_v2/log"
+log_dir = "/data/projects/back_to_the_realm_v2/log"
 level = "INFO"
 tensorflow_log_level = "INFO"
 max_calls_log_per_min = 60
@@ -33,7 +33,7 @@ max_single_message_len = 2048
 # 比如在workflow所在的进程启动时index为0的打印日志
 process_start_index_allowed_print_log_list = [0]
 # 发送监控时, 需要离散休息下时间秒数的设置
-send_monitor_data_sleep_time_seconds = 30
+send_monitor_data_sleep_time_seconds = 1
 
 # 评估模式模型文件夹路径和ID
 eval_model_dir = "/data/ckpt/gorge_walk_dqn/"
@@ -153,7 +153,7 @@ use_rnn = false
 reverb_table_name = "reverb_replay_buffer_table"
 reverb_table_size = 1
 # TensorRT引擎文件目录
-tensorrt_engine_dir = "/data/projects/gorge_walk_v2/kaiwudrl/server/cpp/dist/actor/V100"
+tensorrt_engine_dir = "/data/projects/back_to_the_realm_v2/kaiwudrl/server/cpp/dist/actor/V100"
 # cpu亲和性
 actor_cpu_affinity_list = "0,1,2,3,4,5,6,7,8,9"
 # aisrv最大接收到的TCP连接数目

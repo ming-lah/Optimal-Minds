@@ -10,8 +10,8 @@ Author: Tencent AI Arena Authors
 
 import time
 import os
-import sys
 import platform
+import glob
 from multiprocessing import Process
 from kaiwudrl.common.utils.kaiwudrl_define import KaiwuDRLDefine
 from kaiwudrl.common.utils.http_utils import http_utils_request
@@ -24,20 +24,12 @@ import kaiwudrl.server.learner.learner as learner
 import kaiwudrl.server.aisrv.aisrv as aisrv
 from kaiwudrl.common.config.config_control import CONFIG
 from typing import List
-import glob
 
-# To run the train_test, you must modify the algorithm name here.
-# It must be one of dynamic_programming, monte_carlo, q_learning, sarsa or diy.
+# To run the train_test, you must modify the algorithm name here. It must be one of dqn, target_dqn, ppo, diy.
 # Simply modify the value of the algorithm_name variable.
-# 运行train_test前必须修改这里的算法名字, 必须是dynamic_programming、monte_carlo、q_learning、sarsa、diy里的一个, 修改algorithm_name的值即可
-algorithm_name_list = [
-    "dynamic_programming",
-    "monte_carlo",
-    "q_learning",
-    "sarsa",
-    "diy",
-]
-algorithm_name = "dynamic_programming"
+# 运行train_test前必须修改这里的算法名字, 必须是dqn、target_dqn、ppo、diy里的一个, 修改algorithm_name的值即可
+algorithm_name_list = ["dqn", "target_dqn", "ppo", "diy"]
+algorithm_name = "target_dqn"
 
 
 # train
@@ -55,7 +47,9 @@ def train():
             "preload_ratio": "10",
             "train_batch_size": "2",
             "use_prometheus": "True",
+            "aisrv_connect_to_kaiwu_env_count": "1",
             "dump_model_freq": "1",
+            "max_step_no": "100",
         }
     )
 
@@ -97,12 +91,12 @@ def train():
     if os.path.exists(done_file):
         os.remove(done_file)
 
-    model_base = f"/data/ckpt/{CONFIG.app}_{CONFIG.algo}/model.ckpt-*"
-    possible_extensions = [".npy", ".pkl"]
-    for ext in possible_extensions:
-        pattern = model_base + ext
-        for model_file in glob.glob(pattern):
-            os.remove(model_file)
+    # To delete previous model files
+    # 删除以前的model文件
+    model_files = glob.glob(f"/data/ckpt/{CONFIG.app}_{CONFIG.algo}/model.ckpt-*.pkl")
+    if model_files:
+        for file in model_files:
+            os.remove(file)
 
     # To start aisrv, learner, actor, and battlesrv
     # 启动aisrv, learner, actor, battlesrv
@@ -128,17 +122,18 @@ def train():
             time.sleep(5)
             print("\033[1;31m" + "find error log, please check" + "\033[0m")
             python_exec_shell(f"sh tools/stop.sh all")
+
         else:
             if train_success or process_done:
 
                 time.sleep(5)
                 print(
                     "\033[1;32m"
-                    + f"Train test succeed, will exit, cost {time.time() - start_time:.2f} seconds "
+                    + "Train test succeeded, will exit, cost "
+                    + f"{time.time() - start_time:.2f} seconds"
                     + "\033[0m"
                 )
-
-                python_exec_shell(f"sh tools/stop.sh all")
+                python_exec_shell("sh tools/stop.sh all")
 
         time.sleep(1)
         for proc in procs:
@@ -162,25 +157,22 @@ def check(proc: Process):
         time.sleep(5)
         print("\033[1;31m" + f"{proc.name} is not alive, please check error log" + "\033[0m")
         python_exec_shell(f"sh tools/stop.sh all")
+    else:
+        print(f"{proc.name} is alive")
 
 
 # "Based on the landed model file, if the serialization equals 1,
 # it indicates that the learner has trained for one step and the model file has been correctly landed."
 # 按照落地的model文件来做判断, 如果序列化等于1了, 则代表learner训练1步并且正确落地model文件
 def check_train_success_by_model_file():
-    folder = f"/data/ckpt/{CONFIG.app}_{CONFIG.algo}/"
-    prefix = "model.ckpt-"
-    try:
-        files = os.listdir(folder)
-    except FileNotFoundError:
-        return False
+    model_files = glob.glob(f"/data/ckpt/{CONFIG.app}_{CONFIG.algo}/model.ckpt-[1-9]*.pkl")
+    if model_files:
+        for file in model_files:
+            if os.path.exists(file):
+                os.remove(file)
+        return True
 
-    count = 0
-    for fname in files:
-        fpath = os.path.join(folder, fname)
-        if os.path.isfile(fpath) and fname.startswith(prefix):
-            count += 1
-    return count >= 2
+    return False
 
 
 if __name__ == "__main__":

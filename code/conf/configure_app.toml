@@ -1,110 +1,137 @@
 [app]
-
 # === === === === === === === === === === === === === === === === === === === ===
-# The following configurations can be modified as needed by users
+# Below configurations can be modified as needed by users
 # 下面的配置使用者可以按照需要修改
 # === === === === === === === === === === === === === === === === === === === ===
 
-# Logging related configurations
-# 日志相关配置
-log_dir = "/data/projects/gorge_walk_v2/log"
-level = "INFO"
-
-# Algorithm to be used
-# 采用的算法
-algo = "dynamic_programming"
-
-# Input dimension of reverb samples on learner (Note: different algorithms have different dimensions, e.g., sarsa uses 6)
-# learner上reverb样本的输入维度, 注意不同的算法维度不一样, 比如sarsa的维度是6
-sample_dim = 6
-
-# Learner executes training in a while True loop with sleep time to control sample production/consumption ratio
+# Enable learner to train in a continuous loop with sleep intervals to balance sample production/consumption
 # learner执行while True循环的进行训练，设置休息时间以便设置样本生产消耗比
 learner_train_by_while_true = true
 learner_train_sleep_seconds = 0.0001
 
 # Replay buffer configurations
 # 下面是replay buffer的相关配置
-replay_buffer_capacity = 4096
+replay_buffer_capacity = 10000
 preload_ratio = 1
 
-# Batch size limit for learner training
+# Input dimension for reverb samples on learner (varies by algorithm)
+# learner上reverb样本的输入维度, 注意不同的算法维度不一样
+sample_dim = 21624
+
+# Default number of threads for PyTorch (important for CPU resource control)
+# torch使用时默认的线程数目, 针对单机限制CPU使用很重要
+torch_num_threads = 1
+
+# Batch size for actor prediction
+# actor预测批处理大小
+predict_batch_size = 1
+
+# Sample batch size sent by aisrv in single episode
+# aisrv在单局里多次发送样本大小配置
+send_sample_size = 320
+
+# Training batch size limit for learner
 # learner训练批处理大小限制
-train_batch_size = 256
+train_batch_size = 2048
+
 # Sample production/consumption ratio
 # 样本消耗/生成采样比
 production_consume_ratio = 10
 
-# Evaluation mode model directory path and ID
+# Reverb removal policy options: Fifo, Lifo, Prioritized
+# reverb移除策略, 可选项是reverb.selectors.Lifo, reverb.selectors.Prioritized, reverb.selectors.Fifo
+reverb_remover = "reverb.selectors.Fifo"
+
+# Reverb sampling policy options: Uniform, Fifo, Prioritized
+# reverb采样策略, 可选项是reverb.selectors.Prioritized, reverb.selectors.Fifo, reverb.selectors.Uniform
+reverb_sampler = "reverb.selectors.Uniform"
+
+# Preload model configurations
+# 预加载模型文件夹路径和ID
+preload_model = false
+preload_model_dir = "/data/ckpt/back_to_the_realm_v2_dqn/"
+preload_model_id = 1000
+
+# Model dump frequency (steps)
+# 训练间隔多少步输出model文件
+dump_model_freq = 100
+
+# Evaluation model configurations
 # 评估模式模型文件夹路径和ID
-eval_model_dir = "/data/ckpt/gorge_walk_v2_q_learning/"
+eval_model_dir = "/data/ckpt/back_to_the_realm_v2_dqn/"
 eval_model_id = 0
 
 # === === === === === === === === === === === === === === === === === === === ===
-# The following configurations are used by the framework and not recommended for modification
+# Below configurations are framework-related, not recommended for modification
 # 下面的配置, 由框架使用, 不建议使用者修改
 # === === === === === === === === === === === === === === === === === === === ===
 
-# Automatically modified by framework scripts before process startup
-# 进程启动前已经由框架的脚本自动化修改完成
-app = "gorge_walk_v2"
+# Application specific configurations
+# 下面的项目是每个app要单独配置的
+app = "back_to_the_realm_v2"
 self_play = false
-set_name = "set1"
-self_play_set_name = "set2"
-selfplay_app_conf = "conf/app_conf_gorge_walk_v2.toml"
-noselfplay_app_conf = "conf/app_conf_gorge_walk_v2.toml"
-algo_conf = "conf/algo_conf_gorge_walk_v2.toml"
-rainbow_env_name = "gorge_walk_v2_dev"
+set_name = "back_to_the_realm_v2_set1000"
+self_play_set_name = "back_to_the_realm_v2_set1000"
+selfplay_app_conf = "conf/app_conf_back_to_the_realm_v2.toml"
+noselfplay_app_conf = "conf/app_conf_back_to_the_realm_v2.toml"
+algo_conf = "conf/algo_conf_back_to_the_realm_v2.toml"
+rainbow_env_name = "back_to_the_realm_v2_dev"
 
-# Distinguish between training and evaluation modes
-# 主要区分训练和评估模式
+# Runtime mode (train/eval)
+# 训练或者评估模式
 run_mode = "train"
 
-# Deep learning framework options: tensorflow_simple, tensorflow_complex, tensorrt, pytorch (default: tensorflow_simple)
-# 使用的强化学习框架, 包括tensorflow_simple, tensorflow_complex, tensorrt, pytorch等, 默认是tensorflow_simple
+# Algorithm selection
+# 采用的算法
+algo = "target_dqn"
+
+# Model synchronization interval (minutes)
+# learner/actor之间同步model文件的时间间隔
+model_file_sync_per_minutes = 2
+
+# Model loading interval (minutes)
+# actor加载model文件的时间间隔
+model_file_load_per_minutes = 3
+
+# Deep learning framework selection
+# 使用的强化学习框架
 use_which_deep_learning_framework = "pytorch"
 
-# Prediction placement: local (aisrv) or remote (actor). Local mode recommended for small scale, remote mode for large scale
-# 预测是放在actor远程还是aisrv本地, 小规模场景建议是aisrv本地local模式, 大规模场景和小规模场景都可以使用的actor远程remote模式
+# Prediction location strategy
+# 预测是放在actor远程还是aisrv本地
 predict_local_or_remote = "local"
 
-# Actor and learner addresses configuration
-# 设置的actor, learner地址
-actor_addrs = { train_one = ["127.0.0.1:8888"]}
-learner_addrs = {train_one = ["127.0.0.1:9999"]}
-
-# Whether to sync model files to COS
-# 是否同步将model文件上传到cos
-need_to_sync = false
-
-# Standardized integration pattern
+# Framework integration pattern
 # 接入采用标准化模式
 framework_integration_patterns = "standard"
 
-# KaiwuEnv integration method
+# AISRV framework type
 # 采用接入KaiwuEnv方式
 aisrv_framework = "kaiwu_env"
 
-# Wrapper type options: remote, local, none
-# 采用的wrapper形式, 包括remote, local, none
-wrapper_type = "local"
+# Wrapper type options
+# 采用的wrapper形式
+wrapper_type = "remote"
 
-# Directories to be copied during model saving (relative to project root)
-# 在模型文件保存时, 需要保存的文件目录, 多个目录请按照逗号分割, 并且是以项目根目录开始看的
-copy_dir = "conf,agent_dynamic_programming,agent_monte_carlo,agent_sarsa,agent_q_learning,agent_diy"
+# Directories to include in model saving
+# 模型文件保存时需要包含的目录
+copy_dir = "conf,agent_target_dqn,agent_dqn,agent_diy,agent_ppo"
 
-# Model dump frequency (steps). Adjust based on actual needs
-# 训练间隔多少步输出model文件, 该值需要根据实际情况调整, 设置过小则会导致落模型耗时长, 影响时延; 如果设置过大则导致learner/actor之间model同步间隔长
-dump_model_freq = 10000
+# AISRV connection configuration
+# 单个aisrv连接的kaiwu_env的数目
+aisrv_connect_to_kaiwu_env_count = 8
 
-# Model pool FIFO size (1 for latest model, higher values for historical models)
-# model文件FIFO的个数, 如果是采用最新的模型则设置为1; 需要采用历史模型则该值设置为需要的比如50, FIFO模式
+# Model pool capacity
+# model文件FIFO的个数
 modelpool_max_save_model_count = 1
 
-# Actor prediction batch size
-# actor预测批处理大小
-predict_batch_size = 1
+# Logging configurations
+# 下面是日志文件相关配置
+log_dir = "/data/projects/back_to_the_realm_v2/log"
+level = "INFO"
+tensorflow_log_level = "INFO"
 
-# send monitor data when sleep time
-# 单次发送监控数据休息时间
-send_monitor_data_sleep_time_seconds = 1
+# Network addresses configuration
+# 设置actor和learner地址
+actor_addrs = { train_one = ["127.0.0.1:8888"]}
+learner_addrs = {train_one = ["127.0.0.1:9999"]}

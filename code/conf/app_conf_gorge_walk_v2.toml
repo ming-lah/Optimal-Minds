@@ -1,7 +1,0 @@
-[gorge_walk_v2]
-run_handler = "environment.gorge_walk_run_handler.NatureRunHandler"
-rl_helper = "kaiwudrl.server.aisrv.kaiwu_rl_helper_standard.KaiWuRLStandardHelper"
-
-[gorge_walk_v2.policies.train_one]
-policy_builder = "kaiwudrl.server.aisrv.async_policy.AsyncBuilder"
-algo = "dynamic_programming"

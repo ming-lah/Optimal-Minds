@@ -12,11 +12,10 @@ import torch
 import numpy as np
 from torch import nn
 import torch.nn.functional as F
-from kaiwu_agent.utils.common_func import attached
 
 
 class Model(nn.Module):
-    def __init__(self, state_shape, action_shape):
+    def __init__(self, state_shape, action_shape=0, softmax=False):
         super().__init__()
 
         # User-defined network
