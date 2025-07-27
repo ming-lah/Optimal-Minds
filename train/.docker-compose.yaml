@@ -1,0 +1,178 @@
+version: '3.8'
+x-kaiwu-client:
+  docker_registry: kaiwu.tencentcloudcr.com
+  version_path: ./code/kaiwu.json
+  monitor_url: 'http://127.0.0.1:${KAIWU_MONITOR_PORT}/d/${KAIWU_PROJECT_CODE}_metrics/metrics?orgId=1'
+  extra:
+    back_to_the_realm:
+      extra_cmd: '--profile packing'
+    intelligent_traffic_lights:
+      extra_cmd: '--profile packing'
+    back_to_the_realm_v2:
+      extra_cmd: '--profile packing'
+    intelligent_traffic_lights_v2:
+      extra_cmd: '--profile packing'
+
+services:
+  learner:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/${KAIWU_PROJECT_CODE}/edu/win_gpu:${KAIWU_PROJECT_VERSION}'
+    volumes:
+      - shared_volume:/workspace/train/backup_model
+      - '${KAIWU_TRAIN_LOG}:/workspace/log'
+      - '${KAIWU_CODE_FILE}:/workspace/code'
+    labels:
+      - 'kaiwu=train-check'
+    environment:
+      use_alloc: 'False'
+      push_to_cos: 'False'
+      use_rainbow: 'False'
+      use_prometheus: 'True'
+      KAIWU_TRAINING_MODE: ${KAIWU_TRAINING_MODE}
+      KAIWU_ALGORITHM: ${KAIWU_ALGORITHM}
+      prometheus_pushgateway: 'prometheus-pushgateway:9091'
+      KAIWU_PROJECT_VERSION: ${KAIWU_PROJECT_VERSION}
+      KAIWU_GAMECORE_NUM: ${KAIWU_GAMECORE_NUM}
+    depends_on:
+      - grafana
+      - backup_model
+    command:
+      - bash
+      - '-c'
+      - "bash /root/tools/start_train_client.sh learner"
+    profiles:
+      - single
+      - distributed
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  aisrv:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/${KAIWU_PROJECT_CODE}/edu/win_gpu:${KAIWU_PROJECT_VERSION}'
+    volumes:
+      - shared_volume:/workspace/train/backup_model
+      - '${KAIWU_TRAIN_LOG}:/workspace/log'
+      - '${KAIWU_CODE_FILE}:/workspace/code'
+    labels:
+      - 'kaiwu=train-check'
+    environment:
+      use_alloc: 'False'
+      use_rainbow: 'False'
+      use_prometheus: 'True'
+      prometheus_pushgateway: 'prometheus-pushgateway:9091'
+      KAIWU_TRAINING_MODE: ${KAIWU_TRAINING_MODE}
+      KAIWU_ALGORITHM: ${KAIWU_ALGORITHM}
+      KAIWU_AISRV_NUM: ${KAIWU_AISRV_NUM}
+      KAIWU_PROJECT_VERSION: ${KAIWU_PROJECT_VERSION}
+      KAIWU_PARALLEL_ENV_PER_AISRV: ${KAIWU_PARALLEL_ENV_PER_AISRV}
+    depends_on:
+      - grafana
+    command:
+      - bash
+      - '-c'
+      - "bash /root/tools/start_train_client.sh aisrv"
+    profiles:
+      - distributed
+    deploy:
+      replicas: ${KAIWU_AISRV_NUM}
+
+  kaiwu_env:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/${KAIWU_PROJECT_CODE}/edu/kaiwu_env_x86:${KAIWU_PROJECT_VERSION}'
+    restart: always
+    depends_on:
+      - gamecore
+      - grafana
+    volumes:
+      - '${KAIWU_TRAIN_LOG}:/workspace/log'
+    environment:
+      use_alloc: 'False'
+      use_rainbow: 'False'
+      use_prometheus: 'True'
+      prometheus_pushgateway: 'prometheus-pushgateway:9091'
+      KAIWU_GAMECORE_NUM: ${KAIWU_GAMECORE_NUM}
+    command:
+      - bash
+      - '-c'
+      - 'sh /root/tools/start_train_client.sh env'
+    profiles:
+      - packing
+    deploy:
+      replicas: ${KAIWU_GAMECORE_NUM}
+
+  gamecore:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/${KAIWU_PROJECT_CODE}/edu/gamecore_x86:${KAIWU_PROJECT_VERSION}'
+    restart: always
+    volumes:
+      - '${KAIWU_LICENSE_PATH}:/sgame/license.dat'
+      - '${KAIWU_TRAIN_LOG}:/workspace/log'
+    environment:
+      use_alloc: 'False'
+      use_rainbow: 'False'
+      use_prometheus: 'True'
+      prometheus_pushgateway: 'prometheus-pushgateway:9091'
+      KAIWU_GAMECORE_NUM: ${KAIWU_GAMECORE_NUM}
+    depends_on:
+      - grafana
+    command:
+      - bash
+      - '-c'
+      - "sh /root/tools/start_train_client.sh gamecore"
+    deploy:
+      replicas: ${KAIWU_GAMECORE_NUM}
+
+  backup_model:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/exp/exp_cli:20240704'
+    restart: always
+    volumes:
+      - shared_volume:/workspace/train/backup_model
+      - '${KAIWU_BACKUP_MODEL}:/workspace/train/model'
+    environment:
+      KAIWU_TASK_ID: ${KAIWU_TASK_ID}
+      KAIWU_TASK_UUID: ${KAIWU_TASK_UUID}
+      KAIWU_SET_CNT: ${KAIWU_SET_CNT}
+      KAIWU_SET_INDEX: ${KAIWU_SET_INDEX}
+      KAIWU_TRAINING_MODE: ${KAIWU_TRAINING_MODE}
+      KAIWU_ALGORITHM: ${KAIWU_ALGORITHM}
+      KAIWU_DOMAIN_TYPE: ${KAIWU_DOMAIN_TYPE}
+      KAIWU_DOMAIN_ID: ${KAIWU_DOMAIN_ID}
+      KAIWU_PLAYER_ID: ${KAIWU_PLAYER_ID}
+      KAIWU_PLAYER_TYPE: ${KAIWU_PLAYER_TYPE}
+      KAIWU_PUBLIC_KEY: ${KAIWU_PUBLIC_KEY}
+      KAIWU_PROJECT_VERSION: ${KAIWU_PROJECT_VERSION}
+      KAIWU_PROJECT_CODE: ${KAIWU_PROJECT_CODE}
+    command:
+      - bash
+      - '-c'
+      - |
+        exp-model --is-sign &
+        trap 'echo 123; sleep 99' SIGTERM
+        while true; do
+          sleep 1;
+        done
+
+  grafana:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/monitor/grafana_${KAIWU_CPU_TYPE}:20250702'
+    restart: always
+    depends_on:
+      - prometheus
+    ports:
+      - '${KAIWU_MONITOR_PORT}:3000'
+  prometheus:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/monitor/prometheus_${KAIWU_CPU_TYPE}:20250702'
+    restart: always
+    depends_on:
+      - prometheus-pushgateway
+  prometheus-pushgateway:
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/monitor/pushgateway_${KAIWU_CPU_TYPE}:20250702'
+    restart: always
+    command:
+      - '--log.level=debug'
+      - '--persistence.file=/pushgateway/metrics.db'
+      - '--push.disable-consistency-check'
+      - '--persistence.interval=5m'
+
+volumes:
+  shared_volume:
