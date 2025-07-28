@@ -74,7 +74,22 @@ DirectionAngles = {
 }
 
 
-def reward_process(end_dist, history_dist):
+# def reward_process(end_dist, history_dist):
+#     # step reward
+#     # 步数奖励
+#     step_reward = -0.001
+
+#     # end reward
+#     # 终点奖励
+#     end_reward = -0.02 * end_dist
+
+#     # distance reward
+#     # 距离奖励
+#     dist_reward = min(0.001, 0.05 * history_dist)
+
+#     return [step_reward + dist_reward + end_reward]
+
+def reward_process(end_dist, history_dist, flash_used=False, d_before=None, d_after=None, stuck_penalty: float = 0.0):
     # step reward
     # 步数奖励
     step_reward = -0.001
@@ -87,8 +102,17 @@ def reward_process(end_dist, history_dist):
     # 距离奖励
     dist_reward = min(0.001, 0.05 * history_dist)
 
-    return [step_reward + dist_reward + end_reward]
+    # 闪现奖励
+    flash_cost = -0.02 if flash_used else 0.0
+    flash_gain = 0.0
+    flash_fail = 0.0
+    if flash_used and d_before is not None and d_after is not None:
+        flash_gain = 0.1 * max(0.0, (d_before - d_after))
+        flash_fail = 0.05 if d_after >= d_before else 0.0
+    
+    total = step_reward + end_reward + dist_reward + flash_cost + flash_gain + flash_fail + stuck_penalty
 
+    return [total]
 
 @attached
 def sample_process(list_game_data):
@@ -114,7 +138,7 @@ def SampleData2NumpyData(g_data):
 @attached
 def NumpyData2SampleData(s_data):
     obs_data_size = Config.DIM_OF_OBSERVATION
-    legal_data_size = Config.DIM_OF_ACTION_DIRECTION
+    legal_data_size = Config.DIM_OF_ACTION
     return SampleData(
         obs=s_data[:obs_data_size],
         _obs=s_data[obs_data_size : 2 * obs_data_size],

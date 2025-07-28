@@ -19,8 +19,10 @@ class Config:
         2,
         6,
         6,
-        8,
+        8 + 8,
+        3
     ]
+
 
     FEATURE_SPLIT_SHAPE = FEATURES
 
@@ -36,12 +38,16 @@ class Config:
     # 闪现动作方向的维度
     DIM_OF_TALENT = 8
 
+
+    # Action_DIM
+    DIM_OF_ACTION = 16
+    
     # Input dimension of reverb sample on learner. Note that different algorithms have different dimensions.
     # **Note**, this item must be configured correctly and should be aligned with the NumpyData2SampleData function data in definition.py
     # Otherwise the sample dimension error may be reported
     # learner上reverb样本的输入维度
     # **注意**，此项必须正确配置，应该与definition.py中的NumpyData2SampleData函数数据对齐，否则可能报样本维度错误
-    SAMPLE_DIM = 2 * (DIM_OF_OBSERVATION + DIM_OF_ACTION_DIRECTION) + 4
+    SAMPLE_DIM = 2 * (DIM_OF_OBSERVATION + DIM_OF_ACTION) + 4
 
     # Discount factor GAMMA in RL
     # RL中的回报折扣GAMMA

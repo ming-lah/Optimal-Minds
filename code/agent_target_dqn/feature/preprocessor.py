@@ -12,7 +12,7 @@ Author: Tencent AI Arena Authors
 import numpy as np
 import math
 from agent_target_dqn.feature.definition import RelativeDistance, RelativeDirection, DirectionAngles, reward_process
-
+from agent_target_dqn.conf.conf import Config
 
 def norm(v, max_v, min_v=0):
     v = np.maximum(np.minimum(max_v, v), min_v)
@@ -21,7 +21,15 @@ def norm(v, max_v, min_v=0):
 
 class Preprocessor:
     def __init__(self) -> None:
-        self.move_action_num = 8
+        self.move_action_num = Config.DIM_OF_ACTION
+        self.max_map_dist = math.hypot(128, 128)
+        self.flash_range = 16.0
+
+        # Anti-Stuck
+        self.po_hist_window = 8
+        self.no_progress_penalty = 0.2
+        self.loop_penalty = 0.15
+        self._pos_history = []
         self.reset()
 
     def reset(self):
@@ -32,6 +40,10 @@ class Preprocessor:
         self.is_end_pos_found = False
         self.history_pos = []
         self.bad_move_ids = set()
+
+        self.is_flashed = True
+        
+        self._pos_history.clear()
 
     def _get_pos_feature(self, found, cur_pos, target_pos):
         relative_pos = tuple(y - x for x, y in zip(cur_pos, target_pos))
@@ -50,11 +62,15 @@ class Preprocessor:
         return feature
 
     def pb2struct(self, frame_state, last_action):
-        obs, _ = frame_state
+        obs, extra_info = frame_state
         self.step_no = obs["frame_state"]["step_no"]
 
         hero = obs["frame_state"]["heroes"][0]
+        self.flash_cd = hero["talent"]["status"]
         self.cur_pos = (hero["pos"]["x"], hero["pos"]["z"])
+
+        if self.flash_cd > 0:
+            self.is_flashed = False
 
         # History position
         # 历史位置
@@ -112,17 +128,51 @@ class Preprocessor:
 
         # Feature
         # 特征
-        feature = np.concatenate([self.cur_pos_norm, self.feature_end_pos, self.feature_history_pos, legal_action])
+        base_feature = np.concatenate([self.cur_pos_norm, self.feature_end_pos, self.feature_history_pos, legal_action])
+
+        end_dist = self.feature_end_pos[-1]
+        r_flash = self.flash_range / self.max_map_dist
+        flash_used = (last_action >= Config.DIM_OF_ACTION_DIRECTION)
+        d_after = max(0.0, end_dist - r_flash) if flash_used else end_dist
+        extra_feats = np.array([r_flash, end_dist, d_after], dtype=np.float32)
+
+        feature = np.concatenate([base_feature, extra_feats], axis=0)
+
+        stuck_penalty = 0.0
+
+        self._pos_history.append(self.cur_pos)
+        # 记录n步
+        if len(self._pos_history) > self.po_hist_window:
+            self._pos_history.pop(0)
+
+        # n步内没有移动
+        if len(self._pos_history) == self.pos_hist_window and len(set(self._pos_history)) == 1:
+            stuck_penalty -= self.no_progress_penalty 
+
+        # 最近4步循环
+        if len(self._pos_history) >= 4:
+            if (self._pos_history[-1] == self._pos_history[-3] and 
+                self._pos_history[-2] == self._pos_history[4]):
+                stuck_penalty -= self.loop_penalty
+
+        reward = reward_process(end_dist, self.feature_history_pos[-1], flash_used, end_dist, d_after, stuck_penalty)
 
         return (
             feature,
             legal_action,
-            reward_process(self.feature_end_pos[-1], self.feature_history_pos[-1]),
+            reward,
         )
 
     def get_legal_action(self):
         # if last_action is move and current position is the same as last position, add this action to bad_move_ids
         # 如果上一步的动作是移动，且当前位置与上一步位置相同，则将该动作加入到bad_move_ids中
+
+        legal_action = [False] * self.move_action_num
+        if self.is_flashed:
+            legal_action[8:] = [True] * 8
+        else:
+            legal_action[8:] = [False] * 8
+        
         if (
             abs(self.cur_pos_norm[0] - self.last_pos_norm[0]) < 0.001
             and abs(self.cur_pos_norm[1] - self.last_pos_norm[1]) < 0.001

@@ -86,7 +86,7 @@ treasure_pos = []
 # Boolean value, false means fixed dynamic obstacle list, true means randomly generating a dynamic obstacle.
 # 是否生成随机动态障碍物。
 # 布尔值，false表示固定动态障碍物，true表示随机生成一个动态障碍物。
-obstacle_random = false
+obstacle_random = true
 
 # The id when generating a fixed dynamic obstacle list. It only works when obstacle_random = false.
 # An array containing 0 to 6 elements. The value range of the element is 1 to 6.
