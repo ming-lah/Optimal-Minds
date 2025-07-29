@@ -4,4 +4,4 @@ rl_helper = "kaiwudrl.server.aisrv.kaiwu_rl_helper_standard.KaiWuRLStandardHelpe
 
 [back_to_the_realm_v2.policies.train_one]
 policy_builder = "kaiwudrl.server.aisrv.async_policy.AsyncBuilder"
-algo = "dqn"
+algo = "target_dqn"

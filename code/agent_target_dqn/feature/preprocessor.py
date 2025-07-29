@@ -26,11 +26,22 @@ class Preprocessor:
         self.flash_range = 16.0
 
         # Anti-Stuck
-        self.po_hist_window = 8
+        self.pos_hist_window = 8
         self.no_progress_penalty = 0.2
         self.loop_penalty = 0.15
         self._pos_history = []
+
+        # TTl
+        self.bad_moves = {}
+        self.BAD_TTL = 10
+
+
+        
         self.reset()
+
+
+
+
 
     def reset(self):
         self.step_no = 0
@@ -40,6 +51,8 @@ class Preprocessor:
         self.is_end_pos_found = False
         self.history_pos = []
         self.bad_move_ids = set()
+
+        self.bad_moves.clear()
 
         self.is_flashed = True
         
@@ -71,6 +84,8 @@ class Preprocessor:
 
         if self.flash_cd > 0:
             self.is_flashed = False
+        else:
+            self.is_flashed = True
 
         # History position
         # 历史位置
@@ -142,7 +157,7 @@ class Preprocessor:
 
         self._pos_history.append(self.cur_pos)
         # 记录n步
-        if len(self._pos_history) > self.po_hist_window:
+        if len(self._pos_history) > self.pos_hist_window:
             self._pos_history.pop(0)
 
         # n步内没有移动
@@ -152,7 +167,7 @@ class Preprocessor:
         # 最近4步循环
         if len(self._pos_history) >= 4:
             if (self._pos_history[-1] == self._pos_history[-3] and 
-                self._pos_history[-2] == self._pos_history[4]):
+                self._pos_history[-2] == self._pos_history[-4]):
                 stuck_penalty -= self.loop_penalty
 
         reward = reward_process(end_dist, self.feature_history_pos[-1], flash_used, end_dist, d_after, stuck_penalty)
@@ -163,31 +178,72 @@ class Preprocessor:
             reward,
         )
 
-    def get_legal_action(self):
-        # if last_action is move and current position is the same as last position, add this action to bad_move_ids
-        # 如果上一步的动作是移动，且当前位置与上一步位置相同，则将该动作加入到bad_move_ids中
+    # def get_legal_action(self):
+    #     # if last_action is move and current position is the same as last position, add this action to bad_move_ids
+    #     # 如果上一步的动作是移动，且当前位置与上一步位置相同，则将该动作加入到bad_move_ids中
 
-        legal_action = [False] * self.move_action_num
-        if self.is_flashed:
-            legal_action[8:] = [True] * 8
-        else:
-            legal_action[8:] = [False] * 8
+    #     legal_action = [False] * self.move_action_num
+
+    #     if self.move_usable:
+    #         legal_action[:8] =  [True] * 8
+    #         legal_action[8:] = [self.is_flashed] * 8
+
         
-        if (
-            abs(self.cur_pos_norm[0] - self.last_pos_norm[0]) < 0.001
-            and abs(self.cur_pos_norm[1] - self.last_pos_norm[1]) < 0.001
-            and self.last_action > -1
-        ):
-            self.bad_move_ids.add(self.last_action)
-        else:
-            self.bad_move_ids = set()
+    #     if (
+    #         0 <= self.last_action <8
+    #         and abs(self.cur_pos_norm[0] - self.last_pos_norm[0]) < 0.001
+    #         and abs(self.cur_pos_norm[1] - self.last_pos_norm[1]) < 0.001
+    #     ):
+    #         self.bad_move_ids.add(self.last_action)
+    #     else:
+    #         self.bad_move_ids = set()
 
-        legal_action = [self.move_usable] * self.move_action_num
-        for move_id in self.bad_move_ids:
-            legal_action[move_id] = 0
+    #     for move_id in self.bad_move_ids:
+    #         legal_action[move_id] = 0
 
-        if self.move_usable not in legal_action:
-            self.bad_move_ids = set()
-            return [self.move_usable] * self.move_action_num
+
+    #     if not any(legal_action) and self.move_usable:
+    #         self.bad_move_ids.clear()
+    #         legal_action[:8] = [True] * 8
+    #         legal_action[8:] = [self.is_flashed] * 8
+
+    #     return legal_action
+
+    def get_legal_action(self):
+        """
+        0–7 : 普通移动方向
+        8–15: 闪现方向（需 is_flashed）
+        bad_moves 为 {move_id: ttl}，ttl>0 时对应方向强制不可选
+        """
+
+        # ---------- 1. 基础可行性 ---------- #
+        legal_action = [False] * 16
+        if self.move_usable:
+            legal_action[:8]  = [True] * 8                       # 移动
+            legal_action[8:] = [self.is_flashed] * 8             # 闪现
+
+        # ---------- 2. 撞墙检测 + 更新 TTL ---------- #
+        pos_unchanged = (
+            abs(self.cur_pos_norm[0] - self.last_pos_norm[0]) < 1e-3 and
+            abs(self.cur_pos_norm[1] - self.last_pos_norm[1]) < 1e-3
+        )
+        if 0 <= self.last_action < 8 and pos_unchanged:          # 仅对移动判定
+            self.bad_moves[self.last_action] = self.BAD_TTL
+
+        # TTL 衰减
+        for k in list(self.bad_moves.keys()):
+            self.bad_moves[k] -= 1
+            if self.bad_moves[k] <= 0:
+                del self.bad_moves[k]
+
+        # ---------- 3. 屏蔽带 TTL 的方向 ---------- #
+        for move_id in self.bad_moves.keys():
+            legal_action[move_id] = False
+
+        # ---------- 4. 兜底：若全被屏蔽，解锁移动方向 ---------- #
+        if not any(legal_action) and self.move_usable:
+            self.bad_moves.clear()
+            legal_action[:8]  = [True] * 8
+            legal_action[8:] = [self.is_flashed] * 8
 
         return legal_action

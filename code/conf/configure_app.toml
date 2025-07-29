@@ -83,7 +83,7 @@ run_mode = "train"
 
 # Algorithm selection
 # 采用的算法
-algo = "dqn"
+algo = "target_dqn"
 
 # Model synchronization interval (minutes)
 # learner/actor之间同步model文件的时间间隔

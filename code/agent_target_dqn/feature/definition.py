@@ -108,7 +108,7 @@ def reward_process(end_dist, history_dist, flash_used=False, d_before=None, d_af
     flash_fail = 0.0
     if flash_used and d_before is not None and d_after is not None:
         flash_gain = 0.1 * max(0.0, (d_before - d_after))
-        flash_fail = 0.05 if d_after >= d_before else 0.0
+        flash_fail = -0.05 if d_after >= d_before else 0.0
     
     total = step_reward + end_reward + dist_reward + flash_cost + flash_gain + flash_fail + stuck_penalty
 
