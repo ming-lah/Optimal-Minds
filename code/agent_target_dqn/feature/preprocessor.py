@@ -82,10 +82,10 @@ class Preprocessor:
         self.flash_cd = hero["talent"]["status"]
         self.cur_pos = (hero["pos"]["x"], hero["pos"]["z"])
 
-        if self.flash_cd > 0:
-            self.is_flashed = False
-        else:
+        if self.flash_cd == 1:
             self.is_flashed = True
+        else:
+            self.is_flashed = False
 
         # History position
         # 历史位置
