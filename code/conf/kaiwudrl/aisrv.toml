@@ -51,5 +51,5 @@ need_to_start_learner = true
 # game_index主要在评估时可能使用上
 game_index = 0
 
-kaiwu_env_default_address = '172.18.0.3:5566'
 
+kaiwu_env_default_address = '172.18.0.4:5566'

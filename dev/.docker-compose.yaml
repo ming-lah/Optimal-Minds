@@ -17,7 +17,7 @@ x-kaiwu-client:
 
 services:
   prometheus-pushgateway:
-    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/monitor/pushgateway_x86:20250609'
+    image: 'kaiwu.tencentcloudcr.com/kaiwu_client/monitor/pushgateway_x86:20250702'
     restart: always
     command:
       - --log.level=debug
