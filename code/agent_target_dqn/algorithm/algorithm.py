@@ -20,7 +20,7 @@ from agent_target_dqn.feature.definition import ActData
 
 class Algorithm:
     def __init__(self, device, logger, monitor):
-        self.act_shape = Config.DIM_OF_ACTION_DIRECTION
+        self.act_shape = Config.DIM_OF_ACTION
         self.direction_space = Config.DIM_OF_ACTION_DIRECTION
         self.talent_direction = Config.DIM_OF_TALENT
         self.obs_shape = Config.DIM_OF_OBSERVATION

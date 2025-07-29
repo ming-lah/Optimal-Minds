@@ -91,7 +91,6 @@ class Agent(BaseAgent):
         return ObsData(feature=feature_vec, legal_act=legal_action), reward_list
 
     def action_process(self, act_data):
-        result = act_data.move_dir
-        result += act_data.use_talent * 8
+        result = act_data.move_dir + act_data.use_talent * 8
         self.last_action = result
         return result
