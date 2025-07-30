@@ -33,7 +33,8 @@ class Preprocessor:
 
         # TTl
         self.bad_moves = {}
-        self.BAD_TTL = 10
+        self.BAD_TTL_MOVE = 10
+        self.BAD_TTL_FLASH = 3
 
 
         
@@ -50,7 +51,6 @@ class Preprocessor:
         self.end_pos = None
         self.is_end_pos_found = False
         self.history_pos = []
-        self.bad_move_ids = set()
 
         self.bad_moves.clear()
 
@@ -62,15 +62,25 @@ class Preprocessor:
         relative_pos = tuple(y - x for x, y in zip(cur_pos, target_pos))
         dist = np.linalg.norm(relative_pos)
         target_pos_norm = norm(target_pos, 128, -128)
-        feature = np.array(
-            (
-                found,
-                norm(relative_pos[0] / max(dist, 1e-4), 1, -1),
-                norm(relative_pos[1] / max(dist, 1e-4), 1, -1),
-                target_pos_norm[0],
-                target_pos_norm[1],
-                norm(dist, 1.41 * 128),
-            ),
+
+        direction_onehot = np.zeros(8, dtype=np.float32)
+        if dist > 1e-4:
+            theta = (math.degrees(math.atan2(relative_pos[1], relative_pos[0])) + 360) % 360
+            dir_idx = int(((theta + 22.5) % 360) // 45)  # 0~7
+            direction_onehot[dir_idx] = 1.0
+
+        feature = np.concatenate(
+            [
+                [float(found)],              # 1
+                direction_onehot,            # 8
+                [
+                    norm(relative_pos[0] / max(dist, 1e-4), 1, -1),  # 单位向量 x
+                    norm(relative_pos[1] / max(dist, 1e-4), 1, -1),  # 单位向量 y
+                ],                           # 2
+                list(target_pos_norm),       # 2
+                [norm(dist, self.max_map_dist)],  # 1
+            ],
+            axis=0,
         )
         return feature
 
@@ -82,10 +92,10 @@ class Preprocessor:
         self.flash_cd = hero["talent"]["status"]
         self.cur_pos = (hero["pos"]["x"], hero["pos"]["z"])
 
-        if self.flash_cd > 0:
-            self.is_flashed = False
-        else:
+        if self.flash_cd == 1:
             self.is_flashed = True
+        else:
+            self.is_flashed = False
 
         # History position
         # 历史位置
@@ -149,7 +159,7 @@ class Preprocessor:
         r_flash = self.flash_range / self.max_map_dist
         flash_used = (last_action >= Config.DIM_OF_ACTION_DIRECTION)
         d_after = max(0.0, end_dist - r_flash) if flash_used else end_dist
-        extra_feats = np.array([r_flash, end_dist, d_after], dtype=np.float32)
+        extra_feats = np.array([r_flash, end_dist, d_after, self.flash_cd / 100], dtype=np.float32)
 
         feature = np.concatenate([base_feature, extra_feats], axis=0)
 
@@ -216,6 +226,11 @@ class Preprocessor:
         bad_moves 为 {move_id: ttl}，ttl>0 时对应方向强制不可选
         """
 
+        for k in list(self.bad_moves.keys()):
+            self.bad_moves[k] -= 1
+            if self.bad_moves[k] <= 0:
+                del self.bad_moves[k]
+
         # ---------- 1. 基础可行性 ---------- #
         legal_action = [False] * 16
         if self.move_usable:
@@ -227,14 +242,12 @@ class Preprocessor:
             abs(self.cur_pos_norm[0] - self.last_pos_norm[0]) < 1e-3 and
             abs(self.cur_pos_norm[1] - self.last_pos_norm[1]) < 1e-3
         )
-        if 0 <= self.last_action < 8 and pos_unchanged:          # 仅对移动判定
-            self.bad_moves[self.last_action] = self.BAD_TTL
+        if pos_unchanged and 0 <= self.last_action < 16:
+            if self.last_action < 8:
+                self.bad_moves[self.last_action] = self.BAD_TTL_MOVE
+            else:
+                self.bad_moves[self.last_action % 8] = self.BAD_TTL_FLASH
 
-        # TTL 衰减
-        for k in list(self.bad_moves.keys()):
-            self.bad_moves[k] -= 1
-            if self.bad_moves[k] <= 0:
-                del self.bad_moves[k]
 
         # ---------- 3. 屏蔽带 TTL 的方向 ---------- #
         for move_id in self.bad_moves.keys():
@@ -242,8 +255,13 @@ class Preprocessor:
 
         # ---------- 4. 兜底：若全被屏蔽，解锁移动方向 ---------- #
         if not any(legal_action) and self.move_usable:
-            self.bad_moves.clear()
-            legal_action[:8]  = [True] * 8
-            legal_action[8:] = [self.is_flashed] * 8
+            if self.bad_moves:
+                k_min = min(self.bad_moves, key=self.bad_moves.get)
+                del self.bad_moves[k_min]
+                legal_action[k_min] = True
+            else:
+                legal_action[:8] = [True] * 8
+                legal_action[8:] = [self.is_flashed] * 8
 
-        return legal_action
+        # return legal_action
+        return np.asarray(legal_action, dtype=np.float32)
