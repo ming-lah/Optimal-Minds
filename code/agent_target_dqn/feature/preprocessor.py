@@ -13,6 +13,8 @@ import numpy as np
 import math
 from agent_target_dqn.feature.definition import RelativeDistance, RelativeDirection, DirectionAngles, reward_process
 from agent_target_dqn.conf.conf import Config
+from collections import defaultdict
+import itertools
 
 def norm(v, max_v, min_v=0):
     v = np.maximum(np.minimum(max_v, v), min_v)
@@ -37,7 +39,17 @@ class Preprocessor:
         self.BAD_TTL_FLASH = 3
 
 
-        
+        # visit
+        self.visit_counter = defaultdict(int)
+
+        # 方向
+        self._dir_lookup = [
+            (1, 0),  (1, 1),  (0, 1),  (-1, 1),
+            (-1, 0), (-1,-1), (0,-1),  (1,-1),
+        ]
+        self.prev_action_dir = None
+
+
         self.reset()
 
 
@@ -57,6 +69,9 @@ class Preprocessor:
         self.is_flashed = True
         
         self._pos_history.clear()
+
+        self.visit_counter.clear()
+        self.prev_action_dir = None
 
     def _get_pos_feature(self, found, cur_pos, target_pos):
         relative_pos = tuple(y - x for x, y in zip(cur_pos, target_pos))
@@ -147,13 +162,30 @@ class Preprocessor:
     def process(self, frame_state, last_action):
         self.pb2struct(frame_state, last_action)
 
-        # Legal action
-        # 合法动作
+        # 动作
         legal_action = self.get_legal_action()
 
+        # ---------- 新增 3×3 walkable、射线距离 ---------- #
+        cur_cell = tuple(map(int, self.cur_pos))
+        offsets = list(itertools.product([-1, 0, 1], repeat=2))
+        walkable = [1.0 if self._is_free((cur_cell[0]+dx, cur_cell[1]+dz)) else 0.0
+                    for dx, dz in offsets]                   # 9 dims
+
+        fwd_dir = (self.last_action % 8) if 0 <= self.last_action < 16 else None
+        ray_feat = [self._cast_ray(self.cur_pos, self._dir_lookup[fwd_dir])
+                    if fwd_dir is not None else 1.0]          # 1 dim
+
+        base_feature = np.concatenate([
+            self.cur_pos_norm,
+            self.feature_end_pos,
+            self.feature_history_pos,
+            legal_action,
+            walkable,
+            ray_feat,
+        ])        
+
         # Feature
-        # 特征
-        base_feature = np.concatenate([self.cur_pos_norm, self.feature_end_pos, self.feature_history_pos, legal_action])
+        # base_feature = np.concatenate([self.cur_pos_norm, self.feature_end_pos, self.feature_history_pos, legal_action])
 
         end_dist = self.feature_end_pos[-1]
         r_flash = self.flash_range / self.max_map_dist
@@ -165,7 +197,21 @@ class Preprocessor:
 
         stuck_penalty = 0.0
 
+        # ---------- 访问次数惩罚 ---------- #
+        self.visit_counter[cur_cell] += 1
+        visit_penalty = -0.03 * min(self.visit_counter[cur_cell], 5)
+
+        # ---------- 转向角惩罚 ---------- #
+        turn_angle = 0.0
+        if self.prev_action_dir is not None and 0 <= self.last_action < 8:
+            diff = abs(self.last_action - self.prev_action_dir) % 8
+            diff = 8 - diff if diff > 4 else diff            # 0-4
+            turn_angle = diff * 45
+        if 0 <= self.last_action < 8:
+            self.prev_action_dir = self.last_action
         self._pos_history.append(self.cur_pos)
+
+        
         # 记录n步
         if len(self._pos_history) > self.pos_hist_window:
             self._pos_history.pop(0)
@@ -180,7 +226,16 @@ class Preprocessor:
                 self._pos_history[-2] == self._pos_history[-4]):
                 stuck_penalty -= self.loop_penalty
 
-        reward = reward_process(end_dist, self.feature_history_pos[-1], flash_used, end_dist, d_after, stuck_penalty)
+        reward = reward_process(
+            end_dist,
+            self.feature_history_pos[-1],
+            visit_penalty,
+            turn_angle,
+            flash_used,
+            end_dist,
+            d_after,
+            stuck_penalty,
+        )
 
         return (
             feature,
@@ -254,14 +309,36 @@ class Preprocessor:
             legal_action[move_id] = False
 
         # ---------- 4. 兜底：若全被屏蔽，解锁移动方向 ---------- #
-        if not any(legal_action) and self.move_usable:
-            if self.bad_moves:
-                k_min = min(self.bad_moves, key=self.bad_moves.get)
-                del self.bad_moves[k_min]
-                legal_action[k_min] = True
-            else:
-                legal_action[:8] = [True] * 8
-                legal_action[8:] = [self.is_flashed] * 8
+        if self.is_end_pos_found:
+            dx = self.end_pos[0] - self.cur_pos[0]
+            dz = self.end_pos[1] - self.cur_pos[1]
+            if max(abs(dx), abs(dz)) <= 1:
+                theta = (math.degrees(math.atan2(dz, dx)) + 360) % 360
+                dir_idx = int(((theta + 22.5) % 360) // 45)
+                legal_action[dir_idx] = True
+
+    # 5. 全零兜底退回
+        if not any(legal_action):
+            fallback = self.prev_action_dir if self.prev_action_dir is not None else 0
+            legal_action[fallback] = True
 
         # return legal_action
         return np.asarray(legal_action, dtype=np.float32)
+    
+
+
+
+    
+    def _is_free(self, pos):
+        """粗略判定坐标是否在地图内且非障碍。现阶段仅做边界检查。"""
+        x, z = map(int, pos)
+        return 0 <= x < 128 and 0 <= z < 128   # 128×128 地图
+ 
+    def _cast_ray(self, start, direction, max_step=20):
+        """沿 direction 走，遇障碍或越界即停，返回归一化距离 0-1。"""
+        x, z = start
+        dx, dz = direction
+        for step in range(1, max_step + 1):
+            if not self._is_free((x + dx * step, z + dz * step)):
+                return step / max_step
+        return 1.0
