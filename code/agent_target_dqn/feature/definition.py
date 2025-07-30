@@ -96,11 +96,11 @@ def reward_process(end_dist, history_dist, flash_used=False, d_before=None, d_af
 
     # end reward
     # 终点奖励
-    end_reward = -0.02 * end_dist
+    # end_reward = -0.02 * end_dist
 
     # distance reward
     # 距离奖励
-    dist_reward = min(0.001, 0.05 * history_dist)
+    dist_reward = min(0.002, 0.10 * history_dist)
 
     # 闪现奖励
     flash_cost = -0.02 if flash_used else 0.0
@@ -109,8 +109,10 @@ def reward_process(end_dist, history_dist, flash_used=False, d_before=None, d_af
     if flash_used and d_before is not None and d_after is not None:
         flash_gain = 0.1 * max(0.0, (d_before - d_after))
         flash_fail = -0.05 if d_after >= d_before else 0.0
+
+    end_success = 1.0 if end_dist < 1e-3 else 0.0
     
-    total = step_reward + end_reward + dist_reward + flash_cost + flash_gain + flash_fail + stuck_penalty
+    total = step_reward + dist_reward + flash_cost + flash_gain + flash_fail + stuck_penalty + end_success
 
     return [total]
 
