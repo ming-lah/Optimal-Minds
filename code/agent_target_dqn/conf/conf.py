@@ -17,10 +17,10 @@ class Config:
     # 特征
     FEATURES = [
         2,
-        6,
-        6,
+        14,
+        14,
         8 + 8,
-        3,
+        4,
     ]
 
     FEATURE_SPLIT_SHAPE = FEATURES
@@ -49,14 +49,14 @@ class Config:
 
     # Update frequency of target network
     # target网络的更新频率
-    TARGET_UPDATE_FREQ = 200
+    TARGET_UPDATE_FREQ = 500
 
     # Discount factor GAMMA in RL
     # RL中的回报折扣GAMMA
-    GAMMA = 0.9
+    GAMMA = 0.97
 
     # epsilon
-    EPSILON_MIN = 0.1
+    EPSILON_MIN = 0.05
     EPSILON_MAX = 1.0
     EPSILON_DECAY = 1e-6
 
