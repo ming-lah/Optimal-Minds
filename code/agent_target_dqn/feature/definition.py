@@ -89,18 +89,33 @@ DirectionAngles = {
 
 #     return [step_reward + dist_reward + end_reward]
 
-def reward_process(end_dist, history_dist, flash_used=False, d_before=None, d_after=None, stuck_penalty: float = 0.0):
+def reward_process(
+    end_dist, 
+    history_dist,
+    visit_penalty: float = 0.0,
+    turn_angle: float = 0.0, 
+    flash_used=False, 
+    d_before=None, 
+    d_after=None, 
+    stuck_penalty: float = 0.0):
+
     # step reward
     # 步数奖励
-    step_reward = -0.001
-
-    # end reward
-    # 终点奖励
-    # end_reward = -0.02 * end_dist
+    step_reward = -0.002
 
     # distance reward
     # 距离奖励
-    dist_reward = min(0.002, 0.10 * history_dist)
+    dist_reward = min(0.005, 0.20 * history_dist)
+
+    # 终点附近奖励
+    cone_reward = 0.3 * (0.3 - end_dist) if end_dist < 0.3 else 0.0
+
+    # 访问重复惩罚
+    repeat_penalty = visit_penalty
+
+    # 转向惩罚/直线奖励
+    turn_penalty = -0.002 * (turn_angle / 90.)
+    straight_bonus = 0.002 if turn_angle == 0 else 0.0
 
     # 闪现奖励
     flash_cost = -0.02 if flash_used else 0.0
@@ -112,9 +127,12 @@ def reward_process(end_dist, history_dist, flash_used=False, d_before=None, d_af
 
     end_success = 1.0 if end_dist < 1e-3 else 0.0
     
-    total = step_reward + dist_reward + flash_cost + flash_gain + flash_fail + stuck_penalty + end_success
+    total = (step_reward + dist_reward + cone_reward + repeat_penalty + 
+            turn_penalty + straight_bonus + flash_cost + flash_gain + 
+            flash_fail + stuck_penalty + end_success)
 
-    return [total]
+    return [np.clip(total, -1.5, 1.5)]
+
 
 @attached
 def sample_process(list_game_data):

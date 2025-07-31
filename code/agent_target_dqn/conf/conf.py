@@ -21,6 +21,7 @@ class Config:
         14,
         8 + 8,
         4,
+        9 + 1,
     ]
 
     FEATURE_SPLIT_SHAPE = FEATURES
