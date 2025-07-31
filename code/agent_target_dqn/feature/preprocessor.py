@@ -24,20 +24,21 @@ def norm(v, max_v, min_v=0):
 class Preprocessor:
     def __init__(self) -> None:
         self.move_action_num = Config.DIM_OF_ACTION
+
+        # flash
         self.max_map_dist = math.hypot(128, 128)
         self.flash_range = 16.0
 
         # Anti-Stuck
-        self.pos_hist_window = 8
+        self.pos_hist_window = 10
         self.no_progress_penalty = 0.2
         self.loop_penalty = 0.15
         self._pos_history = []
 
-        # TTl
+        # TTL
         self.bad_moves = {}
         self.BAD_TTL_MOVE = 10
         self.BAD_TTL_FLASH = 3
-
 
         # visit
         self.visit_counter = defaultdict(int)
@@ -49,11 +50,7 @@ class Preprocessor:
         ]
         self.prev_action_dir = None
 
-
         self.reset()
-
-
-
 
 
     def reset(self):
@@ -65,11 +62,8 @@ class Preprocessor:
         self.history_pos = []
 
         self.bad_moves.clear()
-
         self.is_flashed = True
-        
         self._pos_history.clear()
-
         self.visit_counter.clear()
         self.prev_action_dir = None
 
@@ -160,20 +154,24 @@ class Preprocessor:
         self.last_action = last_action
 
     def process(self, frame_state, last_action):
-        self.pb2struct(frame_state, last_action)
 
-        # 动作
+        self.pb2struct(frame_state, last_action)
         legal_action = self.get_legal_action()
 
-        # ---------- 新增 3×3 walkable、射线距离 ---------- #
+
+        # ---------------------3*3 领域特征----------------------
         cur_cell = tuple(map(int, self.cur_pos))
         offsets = list(itertools.product([-1, 0, 1], repeat=2))
         walkable = [1.0 if self._is_free((cur_cell[0]+dx, cur_cell[1]+dz)) else 0.0
-                    for dx, dz in offsets]                   # 9 dims
+                    for dx, dz in offsets]
+        # ------------------------------------------------------
 
+        # ------------------------射限特征----------------------
         fwd_dir = (self.last_action % 8) if 0 <= self.last_action < 16 else None
         ray_feat = [self._cast_ray(self.cur_pos, self._dir_lookup[fwd_dir])
-                    if fwd_dir is not None else 1.0]          # 1 dim
+                    if fwd_dir is not None else 1.0]
+        # -----------------------------------------------------
+
 
         base_feature = np.concatenate([
             self.cur_pos_norm,
@@ -184,9 +182,7 @@ class Preprocessor:
             ray_feat,
         ])        
 
-        # Feature
-        # base_feature = np.concatenate([self.cur_pos_norm, self.feature_end_pos, self.feature_history_pos, legal_action])
-
+        # -----------------闪现奖励------------------
         end_dist = self.feature_end_pos[-1]
         r_flash = self.flash_range / self.max_map_dist
         flash_used = (last_action >= Config.DIM_OF_ACTION_DIRECTION)
@@ -194,14 +190,16 @@ class Preprocessor:
         extra_feats = np.array([r_flash, end_dist, d_after, self.flash_cd / 100], dtype=np.float32)
 
         feature = np.concatenate([base_feature, extra_feats], axis=0)
+        # ------------------------------------------
 
-        stuck_penalty = 0.0
 
-        # ---------- 访问次数惩罚 ---------- #
+        # ---------------访问次数惩罚--------------- 
         self.visit_counter[cur_cell] += 1
         visit_penalty = -0.03 * min(self.visit_counter[cur_cell], 5)
+        # -------------------------------------------
 
-        # ---------- 转向角惩罚 ---------- #
+
+        # -----------------转向角惩罚---------------
         turn_angle = 0.0
         if self.prev_action_dir is not None and 0 <= self.last_action < 8:
             diff = abs(self.last_action - self.prev_action_dir) % 8
@@ -210,8 +208,13 @@ class Preprocessor:
         if 0 <= self.last_action < 8:
             self.prev_action_dir = self.last_action
         self._pos_history.append(self.cur_pos)
+        # -----------------------------------------
 
-        
+
+
+        # --------------- Anti-Stuck---------------
+        stuck_penalty = 0.0
+
         # 记录n步
         if len(self._pos_history) > self.pos_hist_window:
             self._pos_history.pop(0)
@@ -225,6 +228,7 @@ class Preprocessor:
             if (self._pos_history[-1] == self._pos_history[-3] and 
                 self._pos_history[-2] == self._pos_history[-4]):
                 stuck_penalty -= self.loop_penalty
+        # ------------------------------------------
 
         reward = reward_process(
             end_dist,
@@ -243,56 +247,20 @@ class Preprocessor:
             reward,
         )
 
-    # def get_legal_action(self):
-    #     # if last_action is move and current position is the same as last position, add this action to bad_move_ids
-    #     # 如果上一步的动作是移动，且当前位置与上一步位置相同，则将该动作加入到bad_move_ids中
-
-    #     legal_action = [False] * self.move_action_num
-
-    #     if self.move_usable:
-    #         legal_action[:8] =  [True] * 8
-    #         legal_action[8:] = [self.is_flashed] * 8
-
-        
-    #     if (
-    #         0 <= self.last_action <8
-    #         and abs(self.cur_pos_norm[0] - self.last_pos_norm[0]) < 0.001
-    #         and abs(self.cur_pos_norm[1] - self.last_pos_norm[1]) < 0.001
-    #     ):
-    #         self.bad_move_ids.add(self.last_action)
-    #     else:
-    #         self.bad_move_ids = set()
-
-    #     for move_id in self.bad_move_ids:
-    #         legal_action[move_id] = 0
-
-
-    #     if not any(legal_action) and self.move_usable:
-    #         self.bad_move_ids.clear()
-    #         legal_action[:8] = [True] * 8
-    #         legal_action[8:] = [self.is_flashed] * 8
-
-    #     return legal_action
-
     def get_legal_action(self):
-        """
-        0–7 : 普通移动方向
-        8–15: 闪现方向（需 is_flashed）
-        bad_moves 为 {move_id: ttl}，ttl>0 时对应方向强制不可选
-        """
-
+        # TTL减一
         for k in list(self.bad_moves.keys()):
             self.bad_moves[k] -= 1
             if self.bad_moves[k] <= 0:
                 del self.bad_moves[k]
-
-        # ---------- 1. 基础可行性 ---------- #
+        
+        # 基本的设置
         legal_action = [False] * 16
         if self.move_usable:
             legal_action[:8]  = [True] * 8                       # 移动
             legal_action[8:] = [self.is_flashed] * 8             # 闪现
 
-        # ---------- 2. 撞墙检测 + 更新 TTL ---------- #
+        # 撞墙检测+更新TTL
         pos_unchanged = (
             abs(self.cur_pos_norm[0] - self.last_pos_norm[0]) < 1e-3 and
             abs(self.cur_pos_norm[1] - self.last_pos_norm[1]) < 1e-3
@@ -303,12 +271,11 @@ class Preprocessor:
             else:
                 self.bad_moves[self.last_action % 8] = self.BAD_TTL_FLASH
 
-
-        # ---------- 3. 屏蔽带 TTL 的方向 ---------- #
+        # 屏蔽TTL方向
         for move_id in self.bad_moves.keys():
             legal_action[move_id] = False
 
-        # ---------- 4. 兜底：若全被屏蔽，解锁移动方向 ---------- #
+        # 终点策略
         if self.is_end_pos_found:
             dx = self.end_pos[0] - self.cur_pos[0]
             dz = self.end_pos[1] - self.cur_pos[1]
@@ -317,7 +284,7 @@ class Preprocessor:
                 dir_idx = int(((theta + 22.5) % 360) // 45)
                 legal_action[dir_idx] = True
 
-    # 5. 全零兜底退回
+        # 全零兜底退回
         if not any(legal_action):
             fallback = self.prev_action_dir if self.prev_action_dir is not None else 0
             legal_action[fallback] = True
@@ -328,14 +295,12 @@ class Preprocessor:
 
 
 
-    
+    # 工具函数
     def _is_free(self, pos):
-        """粗略判定坐标是否在地图内且非障碍。现阶段仅做边界检查。"""
         x, z = map(int, pos)
-        return 0 <= x < 128 and 0 <= z < 128   # 128×128 地图
+        return 0 <= x < 128 and 0 <= z < 128
  
     def _cast_ray(self, start, direction, max_step=20):
-        """沿 direction 走，遇障碍或越界即停，返回归一化距离 0-1。"""
         x, z = start
         dx, dz = direction
         for step in range(1, max_step + 1):
