@@ -101,6 +101,19 @@ class Preprocessor:
         self.flash_cd = hero["talent"]["status"]
         self.cur_pos = (hero["pos"]["x"], hero["pos"]["z"])
 
+        # _is_free准备数据
+        self.local_map = np.array(
+            [row["values"] for row in obs["map_info"]],
+            dtype=np.int32
+        )
+        self.local_h, self.local_w = self.local_map.shape
+
+        cx, cz = self.cur_pos
+        half_w, half_h = self.local_w//2, self.local_h//2
+        self._map_left = cx - half_w
+        self._map_top  = cz - half_h
+        self._vision_radius = self.local_h // 2
+
         if self.flash_cd == 1:
             self.is_flashed = True
         else:
@@ -166,10 +179,16 @@ class Preprocessor:
                     for dx, dz in offsets]
         # ------------------------------------------------------
 
+        # # ------------------------射限特征----------------------
+        # fwd_dir = (self.last_action % 8) if 0 <= self.last_action < 16 else None
+        # ray_feat = [self._cast_ray(self.cur_pos, self._dir_lookup[fwd_dir])
+        #             if fwd_dir is not None else 1.0]
+        # # -----------------------------------------------------
+
         # ------------------------射限特征----------------------
-        fwd_dir = (self.last_action % 8) if 0 <= self.last_action < 16 else None
-        ray_feat = [self._cast_ray(self.cur_pos, self._dir_lookup[fwd_dir])
-                    if fwd_dir is not None else 1.0]
+        ray_feats = []
+        for dir_vec in self._dir_lookup:
+            ray_feats.append(self._cast_ray(self.cur_pos, dir_vec))
         # -----------------------------------------------------
 
 
@@ -179,7 +198,7 @@ class Preprocessor:
             self.feature_history_pos,
             legal_action,
             walkable,
-            ray_feat,
+            ray_feats,
         ])        
 
         # -----------------闪现奖励------------------
@@ -298,12 +317,20 @@ class Preprocessor:
     # 工具函数
     def _is_free(self, pos):
         x, z = map(int, pos)
-        return 0 <= x < 128 and 0 <= z < 128
+        if not (0 <= x < 128 and 0 <= z < 128):
+            return False
+        lx = x - self._map_left
+        lz = z - self._map_top
+        if not (0 <= lx < self.local_w and 0 <= lz < self.local_h):
+            return True
+        return self.local_map[lz, lx] == 0
  
-    def _cast_ray(self, start, direction, max_step=20):
-        x, z = start
+    def _cast_ray(self, start, direction, max_step=None):
+        x0, z0 = start
         dx, dz = direction
+        max_step = max_step if max_step is not None else self._vision_radius
         for step in range(1, max_step + 1):
-            if not self._is_free((x + dx * step, z + dz * step)):
+            x, z = x0 + dx * step, z0 + dz * step
+            if not self._is_free((x, z)):
                 return step / max_step
         return 1.0
