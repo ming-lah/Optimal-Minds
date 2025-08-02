@@ -143,7 +143,7 @@ def reward_process(
 
     # 新增宝箱相关奖励
     chest_reward = 0.0
-    # chest_proximity_reward = 0.0
+    chest_proximity_reward = 0.0
     
     if is_exploration_phase:
         # 宝箱收集奖励（动态衰减）
