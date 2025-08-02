@@ -54,7 +54,7 @@ class Agent(BaseAgent):
 
     @exploit_wrapper
     def exploit(self, observation):
-        obs_data, _ = self.observation_process(observation["obs"], observation["extra_info"])
+        obs_data, _ = self.observation_process(observation["obs"], observation["extra_info"], is_exploit=True)
         act_data = self.algorithm.predict_detail([obs_data], exploit_flag=True)
         act = self.action_process(act_data[0])
         return act
@@ -86,9 +86,16 @@ class Agent(BaseAgent):
         self.algorithm.model.load_state_dict(torch.load(model_file_path, map_location=self.algorithm.device))
         self.logger.info(f"load model {model_file_path} successfully")
 
-    def observation_process(self, obs, extra_info):
-        (feature_vec, legal_action, reward_list) = self.preprocessor.process([obs, extra_info], self.last_action)
-        return ObsData(feature=feature_vec, legal_act=legal_action), reward_list
+    def observation_process(self, obs, extra_info=None, is_exploit=False):
+        if is_exploit:
+            feature, legal_action = self.preprocessor.process([obs, extra_info], self.last_action, is_exploit)
+            return ObsData(
+                feature=feature,
+                legal_act=legal_action
+            )
+        else:
+            feature, legal_action, reward = self.preprocessor.process([obs, extra_info], self.last_action, is_exploit)
+            return ObsData(feature=feature, legal_act=legal_action), reward
 
     def action_process(self, act_data):
         result = act_data.move_dir

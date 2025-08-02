@@ -97,7 +97,16 @@ def reward_process(
     flash_used=False, 
     d_before=None, 
     d_after=None, 
-    stuck_penalty: float = 0.0):
+    stuck_penalty: float = 0.0,
+    obs = None,
+    extra_info = None
+    ):
+
+    # 获取宝箱信息
+    total_chests = extra_info["game_info"]["treasure_count"]
+    collected_chests = obs["score_info"]["treasure_collected_count"]
+    remaining_chests = total_chests - collected_chests
+    is_exploration_phase = remaining_chests > 0
 
     # step reward
     # 步数奖励
@@ -127,11 +136,52 @@ def reward_process(
 
     end_success = 1.0 if end_dist < 1e-3 else 0.0
     
-    total = (step_reward + dist_reward + cone_reward + repeat_penalty + 
+    base_reward = (step_reward + dist_reward + cone_reward + repeat_penalty + 
             turn_penalty + straight_bonus + flash_cost + flash_gain + 
             flash_fail + stuck_penalty + end_success)
 
-    return [np.clip(total, -1.5, 1.5)]
+
+    # 新增宝箱相关奖励
+    chest_reward = 0.0
+    # chest_proximity_reward = 0.0
+    
+    if is_exploration_phase:
+        # 宝箱收集奖励（动态衰减）
+        chest_reward = 1.0 * (1 - 0.2 * (total_chests - remaining_chests))
+        
+        # 距离最近宝箱的引导奖励
+        nearest_chest_dist = _get_nearest_chest_distance(obs, extra_info)
+        chest_proximity_reward = 0.1 * (1 - nearest_chest_dist)
+        
+        # 弱化终点距离惩罚 -> 优先探索宝箱
+        end_dist_penalty = 0.01 * end_dist
+    else:
+        end_dist_penalty = 0.05 * end_dist
+        chest_reward = 0.0
+        chest_proximity_reward = 0.0
+
+    total_reward = base_reward + chest_reward + chest_proximity_reward - end_dist_penalty
+
+
+    return [np.clip(total_reward, -1.5, 1.5)]
+
+# 计算到最近未收集宝箱的归一化距离
+def _get_nearest_chest_distance(obs, extra_info):
+    organs = obs["frame_state"]["organs"]
+    chests = [
+        (o["pos"]["x"], o["pos"]["z"])
+        for o in organs 
+        if o["sub_type"] == 1 and o["status"] == 1  # 类型1且未收集
+    ]
+    if not chests:
+        return 1.0  # 无宝箱时返回最大值
+    
+    cur_pos = (extra_info["game_info"]["pos"]["x"], 
+               extra_info["game_info"]["pos"]["z"])
+    max_map_dist = math.hypot(128, 128)  # 地图对角线距离
+    distances = [math.hypot(p[0]-cur_pos[0], p[1]-cur_pos[1]) for p in chests]
+
+    return min(distances) / max_map_dist  # 归一化
 
 
 @attached

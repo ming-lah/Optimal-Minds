@@ -166,10 +166,12 @@ class Preprocessor:
         self.move_usable = True
         self.last_action = last_action
 
-    def process(self, frame_state, last_action):
+    def process(self, frame_state, last_action, is_exploit = False):
 
         self.pb2struct(frame_state, last_action)
         legal_action = self.get_legal_action()
+
+        obs, extra_info = frame_state
 
 
         # ---------------------3*3 领域特征----------------------
@@ -258,13 +260,21 @@ class Preprocessor:
             end_dist,
             d_after,
             stuck_penalty,
+            obs,
+            extra_info
         )
 
-        return (
-            feature,
-            legal_action,
-            reward,
-        )
+        if is_exploit:
+            return (
+                feature,
+                legal_action,
+            )
+        else:
+            return (
+                feature,
+                legal_action,
+                reward
+            )
 
     def get_legal_action(self):
         # TTL减一
