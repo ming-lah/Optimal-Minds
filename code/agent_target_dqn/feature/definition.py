@@ -97,7 +97,9 @@ def reward_process(
     flash_used=False, 
     d_before=None, 
     d_after=None, 
-    stuck_penalty: float = 0.0):
+    stuck_penalty: float = 0.0,
+    near_goal_penalty: float = 0.0,
+    corner_reward: float = 0.0):
 
     # step reward
     # 步数奖励
@@ -125,11 +127,12 @@ def reward_process(
         flash_gain = 0.1 * max(0.0, (d_before - d_after))
         flash_fail = -0.05 if d_after >= d_before else 0.0
 
-    end_success = 1.0 if end_dist < 1e-3 else 0.0
+    end_success = 1.2 if end_dist < 1e-3 else 0.0
     
     total = (step_reward + dist_reward + cone_reward + repeat_penalty + 
             turn_penalty + straight_bonus + flash_cost + flash_gain + 
-            flash_fail + stuck_penalty + end_success)
+            flash_fail + stuck_penalty + end_success +
+            near_goal_penalty + corner_reward)
 
     return [np.clip(total, -1.5, 1.5)]
 
