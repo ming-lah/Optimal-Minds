@@ -50,6 +50,14 @@ class Preprocessor:
         ]
         self.prev_action_dir = None
 
+        # 终点附近的步数
+        self.near_goal_steps = 0
+
+        # 死角逃脱奖励
+        self.corner_radius = getattr(Config, "CORNER_RADIUS", 6)
+        self.map_w = getattr(Config, "MAP_WIDTH", 128)
+        self.map_h = getattr(Config, "MAP_HEIGHT",128)
+
         self.reset()
 
 
@@ -66,6 +74,7 @@ class Preprocessor:
         self._pos_history.clear()
         self.visit_counter.clear()
         self.prev_action_dir = None
+        self.near_goal_steps = 0
 
     def _get_pos_feature(self, found, cur_pos, target_pos):
         relative_pos = tuple(y - x for x, y in zip(cur_pos, target_pos))
@@ -174,7 +183,7 @@ class Preprocessor:
 
         # ---------------------3*3 领域特征----------------------
         cur_cell = tuple(map(int, self.cur_pos))
-        offsets = list(itertools.product([-1, 0, 1], repeat=2))
+        offsets = [(dx,dz) for dx,dz in itertools.product([-1,0,1],repeat=2) if not (dx==0 and dz==0)]
         walkable = [1.0 if self._is_free((cur_cell[0]+dx, cur_cell[1]+dz)) else 0.0
                     for dx, dz in offsets]
         # ------------------------------------------------------
@@ -249,6 +258,39 @@ class Preprocessor:
                 stuck_penalty -= self.loop_penalty
         # ------------------------------------------
 
+        # ---------------终点附近徘徊惩罚---------------
+        NEAR_GOAL_TH = 0.05
+        MAX_LOITER    = 10
+        if end_dist < NEAR_GOAL_TH:
+            self.near_goal_steps += 1
+        else:
+            self.near_goal_steps = 0
+        near_goal_penalty = -0.05 * min(self.near_goal_steps, MAX_LOITER)
+        # ---------------------------------------------
+
+        # -----------------死角逃脱奖励----------------
+        if last_action < 8:
+            dx, dz = self._dir_lookup[last_action]
+            next_pos = (int(self.cur_pos[0] + dx), int(self.cur_pos[1] + dz))
+        else:
+            dir_idx = last_action % 8
+            dx, dz = self._dir_lookup[dir_idx]
+            next_pos = (
+                int(self.cur_pos[0] + dx * self.flash_range),
+                int(self.cur_pos[1] + dz * self.flash_range)
+            )
+        next_pos = (
+            max(0, min(self.map_w - 1, next_pos[0])),
+            max(0, min(self.map_h - 1, next_pos[1])),
+        )
+        cur_region = self._get_window_neighbors(self.cur_pos, self.corner_radius)
+        next_region = self._get_window_neighbors(next_pos,  self.corner_radius)
+        v_cur  = np.mean([ self.visit_counter[c] for c in cur_region ])
+        v_next = np.mean([ self.visit_counter[c] for c in next_region ])
+        corner_reward = 0.05 if v_next < v_cur else 0.0
+        # --------------------------------------------
+
+
         reward = reward_process(
             end_dist,
             self.feature_history_pos[-1],
@@ -258,6 +300,8 @@ class Preprocessor:
             end_dist,
             d_after,
             stuck_penalty,
+            near_goal_penalty,
+            corner_reward
         )
 
         return (
@@ -334,3 +378,14 @@ class Preprocessor:
             if not self._is_free((x, z)):
                 return step / max_step
         return 1.0
+
+    def _get_window_neighbors(self, pos, radius):
+        x0, y0 = pos
+        cells = []
+        for dx in range(-radius, radius+1):
+            for dy in range(-radius, radius+1):
+                if dx==0 and dy==0: continue
+                x, y = x0+dx, y0+dy
+                if 0 <= x < self.map_w and 0 <= y < self.map_h:
+                    cells.append((x,y))
+        return cells
