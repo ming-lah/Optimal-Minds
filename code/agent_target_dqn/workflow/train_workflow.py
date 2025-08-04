@@ -23,10 +23,11 @@ from tools.metrics_utils import get_training_metrics
 def workflow(envs, agents, logger=None, monitor=None):
     try:
         env, agent = envs[0], agents[0]
-        episode_num_every_epoch = 1
+        episode_num_every_epoch = 13
         last_save_model_time = 0
         last_put_data_time = 0
         monitor_data = {}
+        epoch = 0   # 用于分阶段训练
 
         # Read and validate configuration file
         # 配置文件读取和校验
@@ -36,9 +37,11 @@ def workflow(envs, agents, logger=None, monitor=None):
             return
 
         while True:
-            for g_data, monitor_data in run_episodes(episode_num_every_epoch, env, agent, usr_conf, logger, monitor):
+            for g_data, monitor_data in run_episodes(episode_num_every_epoch, env, agent, usr_conf, logger, monitor, epoch):
                 agent.learn(g_data)
                 g_data.clear()
+
+            epoch += 1
 
             # Save model file
             # 保存model文件
@@ -57,7 +60,7 @@ def workflow(envs, agents, logger=None, monitor=None):
         raise RuntimeError(f"workflow error")
 
 
-def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
+def run_episodes(n_episode, env, agent, usr_conf, logger, monitor, epoch):
     try:
         for episode in range(n_episode):
             collector = list()
@@ -88,7 +91,7 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
 
             # Feature processing
             # 特征处理
-            obs_data, _ = agent.observation_process(obs, extra_info)
+            obs_data, _ = agent.observation_process(obs, extra_info, Epoch=epoch)
 
             done = False
             step = 0
@@ -123,7 +126,7 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
 
                 # Feature processing
                 # 特征处理
-                _obs_data, reward_list = agent.observation_process(_obs, _extra_info)
+                _obs_data, reward_list = agent.observation_process(_obs, _extra_info, Epoch=epoch)
                 reward = sum(reward_list)
 
                 # Determine task over, and update the number of victories
@@ -163,8 +166,8 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
                 if done:
                     if monitor:
                         monitor_data = {
-                            "diy_1": win_rate,
-                            "diy_2": diy_2,
+                            "win_rate": win_rate,
+                            "epoch": epoch,
                             "diy_3": diy_3,
                             "diy_4": diy_4,
                             "diy_5": diy_5,

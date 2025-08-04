@@ -11,6 +11,7 @@ Author: Tencent AI Arena Authors
 import numpy as np
 from kaiwu_agent.utils.common_func import attached, create_cls
 from agent_target_dqn.conf.conf import Config
+import math
 
 # The create_cls function is used to dynamically create a class. The first parameter of the function is the type name,
 # and the remaining parameters are the attributes of the class, which should have a default value of None.
@@ -99,14 +100,16 @@ def reward_process(
     d_after=None, 
     stuck_penalty: float = 0.0,
     obs = None,
-    extra_info = None
+    extra_info = None,
+    epoch = None
     ):
 
     # 获取宝箱信息
     total_chests = extra_info["game_info"]["treasure_count"]
     collected_chests = obs["score_info"]["treasure_collected_count"]
     remaining_chests = total_chests - collected_chests
-    is_exploration_phase = remaining_chests > 0
+    all_chest_collected = (remaining_chests == 0)
+    nearest_chest_dist = _get_nearest_chest_distance(obs, extra_info)
 
     # step reward
     # 步数奖励
@@ -134,34 +137,51 @@ def reward_process(
         flash_gain = 0.1 * max(0.0, (d_before - d_after))
         flash_fail = -0.05 if d_after >= d_before else 0.0
 
-    end_success = 1.0 if end_dist < 1e-3 else 0.0
-    
+    # 判断训练阶段
+    if epoch < 300:
+        stage = 1   # 学会行走
+    elif 300 <= epoch < 1000:
+        stage = 2   # 尝试收集宝箱
+    else:
+        stage = 3   # 先找宝箱，再找终点
+
+    # 阶段化训练
+    chest_reward = 0.0
+    chest_proximity_reward = 0.0
+    end_success = 0.0
+    end_dist_penalty = 0.0
+
+    if stage == 1:
+        if end_dist < 1e-3:
+            end_success = 1.0
+
+        end_dist_penalty = 0.01 * end_dist  # 稍微鼓励接近终点
+
+    elif stage == 2:
+        chest_reward = 0.5 * collected_chests
+        chest_proximity_reward = 0.3 * (1 - nearest_chest_dist)
+
+        if end_dist < 1e-3:
+            end_success = 0.3
+
+        end_dist_penalty = 0.02 * end_dist
+
+    elif stage == 3:
+        chest_reward = 0.5 * collected_chests
+        chest_proximity_reward = 0.4 * (1 - nearest_chest_dist)
+
+        if end_dist < 1e-3 and all_chests_collected:
+            end_success = 1.0
+        elif end_dist < 1e-3 and not all_chests_collected:
+            end_success = -0.5  # 惩罚未收集完就去终点
+
+        end_dist_penalty = 0.03 * end_dist
+
     base_reward = (step_reward + dist_reward + cone_reward + repeat_penalty + 
             turn_penalty + straight_bonus + flash_cost + flash_gain + 
             flash_fail + stuck_penalty + end_success)
 
-
-    # 新增宝箱相关奖励
-    chest_reward = 0.0
-    chest_proximity_reward = 0.0
-    
-    if is_exploration_phase:
-        # 宝箱收集奖励（动态衰减）
-        chest_reward = 1.0 * (1 - 0.2 * (total_chests - remaining_chests))
-        
-        # 距离最近宝箱的引导奖励
-        nearest_chest_dist = _get_nearest_chest_distance(obs, extra_info)
-        chest_proximity_reward = 0.1 * (1 - nearest_chest_dist)
-        
-        # 弱化终点距离惩罚 -> 优先探索宝箱
-        end_dist_penalty = 0.01 * end_dist
-    else:
-        end_dist_penalty = 0.05 * end_dist
-        chest_reward = 0.0
-        chest_proximity_reward = 0.0
-
     total_reward = base_reward + chest_reward + chest_proximity_reward - end_dist_penalty
-
 
     return [np.clip(total_reward, -1.5, 1.5)]
 

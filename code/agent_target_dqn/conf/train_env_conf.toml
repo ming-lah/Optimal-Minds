@@ -66,7 +66,7 @@ talent_cooldown = 100
 # 宝箱是否随机, 布尔值，false - 固定宝箱，true - 随机宝箱。
 # 若开启固定，则使用treasure_pos生成固定宝箱。
 # 若开启随机，则使用treasure_count随机生成宝箱。
-treasure_random = false
+treasure_random = true
 
 # The number of treasure chests when generating random treasure chest list. This is only valid when treasure_random = true.
 # Integer, the value range is 0~13.

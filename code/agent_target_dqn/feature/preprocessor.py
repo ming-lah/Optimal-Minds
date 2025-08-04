@@ -166,7 +166,7 @@ class Preprocessor:
         self.move_usable = True
         self.last_action = last_action
 
-    def process(self, frame_state, last_action, is_exploit = False):
+    def process(self, frame_state, last_action, is_exploit = False, Epoch = None):
 
         self.pb2struct(frame_state, last_action)
         legal_action = self.get_legal_action()
@@ -261,7 +261,8 @@ class Preprocessor:
             d_after,
             stuck_penalty,
             obs,
-            extra_info
+            extra_info,
+            Epoch
         )
 
         if is_exploit:
