@@ -19,8 +19,10 @@ class Config:
         2,
         14,
         14,
+        14,
+        14,
         8 + 8,
-        4,
+        6,
         8,
         8,
     ]
@@ -65,3 +67,22 @@ class Config:
     # Initial learning rate
     # 初始的学习率
     START_LR = 1e-4
+
+    # 训练调度
+    S1_STEPS = 1000
+    S2_STEPS = 3000
+
+    # 宝箱
+    TOTAL_TREASURES = 8
+
+    # 潜势函数
+    BASE_W_T = 0.5
+    BASE_W_E = 1.0
+
+    TREASURE_REWARD = 1.0
+
+    GOAL_REWARD = 3.0
+    INCOMPLETE_END_PENALTY = 2.0
+
+    REWARD_CLIP = 5.0
+

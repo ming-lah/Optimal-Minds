@@ -44,7 +44,7 @@ end_random = true
 # Boolean value, true indicates a random acceleration gain position, false indicates using the buff field to generate a fixed acceleration gain position.
 # 加速增益是否随机。
 # 布尔值，true表示随机加速增益位置，false表示使用buff字段生成固定加速增益位置。
-buff_random = false
+buff_random = true
 
 # The number of cooling steps for the acceleration buff.
 # The acceleration gain will enter a cooling state after being collected and will be reactivated after the cooling state ends.
@@ -80,7 +80,7 @@ treasure_count = 8
 # 生成固定宝箱时的宝箱位置，仅在treasure_random = false时生效。
 # 二维数组，包含0~13个元素，每个元素为一个数组，分别为xy坐标，取值范围为0~127。
 # 元素不支持重复值
-treasure_pos = []
+treasure_pos=[[80, 50],[64, 20],[109, 52],[46, 55],[20, 84],[26, 116],[66, 97],[101, 28]]
 
 # Whether to generate random dynamic obstacle list.
 # Boolean value, false means fixed dynamic obstacle list, true means randomly generating a dynamic obstacle.
@@ -106,4 +106,4 @@ talent_type = 1
 # Integer, range is 1~2000.
 # 单局最大步数。
 # 整型，取值范围为1~2000。
-max_step = 1000
+max_step = 2000

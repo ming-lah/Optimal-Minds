@@ -17,7 +17,7 @@ from agent_target_dqn.feature.definition import (
     sample_process,
 )
 from tools.metrics_utils import get_training_metrics
-
+from agent_target_dqn.conf.conf import Config
 
 @attached
 def workflow(envs, agents, logger=None, monitor=None):
@@ -27,6 +27,7 @@ def workflow(envs, agents, logger=None, monitor=None):
         last_save_model_time = 0
         last_put_data_time = 0
         monitor_data = {}
+        epoch = 0
 
         # Read and validate configuration file
         # 配置文件读取和校验
@@ -34,11 +35,13 @@ def workflow(envs, agents, logger=None, monitor=None):
         if usr_conf is None:
             logger.error(f"usr_conf is None, please check agent_target_dqn/conf/train_env_conf.toml")
             return
-
+        
         while True:
-            for g_data, monitor_data in run_episodes(episode_num_every_epoch, env, agent, usr_conf, logger, monitor):
+            for g_data, monitor_data in run_episodes(episode_num_every_epoch, env, agent, usr_conf, logger, monitor, epoch):
                 agent.learn(g_data)
+                agent.global_step += 1
                 g_data.clear()
+            epoch  += 1
 
             # Save model file
             # 保存model文件
@@ -57,7 +60,7 @@ def workflow(envs, agents, logger=None, monitor=None):
         raise RuntimeError(f"workflow error")
 
 
-def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
+def run_episodes(n_episode, env, agent, usr_conf, logger, monitor, epoch):
     try:
         for episode in range(n_episode):
             collector = list()
@@ -88,7 +91,7 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
 
             # Feature processing
             # 特征处理
-            obs_data, _ = agent.observation_process(obs, extra_info)
+            obs_data, _ = agent.observation_process(obs, extra_info, global_step=agent.global_step, done=False)
 
             done = False
             step = 0
@@ -123,7 +126,7 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
 
                 # Feature processing
                 # 特征处理
-                _obs_data, reward_list = agent.observation_process(_obs, _extra_info)
+                _obs_data, reward_list = agent.observation_process(_obs, _extra_info, global_step=agent.global_step, done=done)
                 reward = sum(reward_list)
 
                 # Determine task over, and update the number of victories
@@ -157,17 +160,25 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor):
                 )
 
                 collector.append(frame)
+                # agent.global_step += 1
 
                 # If the task is over, the sample is processed and sent to training
                 # 如果任务结束，则进行样本处理，将样本送去训练
                 if done:
                     if monitor:
+                        if agent.global_step < Config.S1_STEPS:
+                            t, e = 1.0, 0.0
+                        elif agent.global_step < Config.S2_STEPS:
+                            t = 1 - (agent.global_step - Config.S1_STEPS) / (Config.S2_STEPS - Config.S1_STEPS)
+                            e = 1 - t
+                        else:
+                            t, e = 0.0, 1.0
                         monitor_data = {
                             "diy_1": win_rate,
-                            "diy_2": diy_2,
-                            "diy_3": diy_3,
-                            "diy_4": diy_4,
-                            "diy_5": diy_5,
+                            "diy_2": t,
+                            "diy_3": e,
+                            "diy_4": agent.global_step,
+                            "diy_5": epoch,
                         }
 
                     if len(collector) > 0:
