@@ -99,7 +99,12 @@ def reward_process(
     d_after=None, 
     stuck_penalty: float = 0.0,
     near_goal_penalty: float = 0.0,
-    corner_reward: float = 0.0):
+    cone_reward: float = 0.0,
+    corner_reward: float = 0.0,
+    treasure_gain=0, buff_gain=0,
+    shape: float = 0.0,
+    one_time: float = 0.0,
+    end_pen: float = 0.0):
 
     # step reward
     # 步数奖励
@@ -110,7 +115,7 @@ def reward_process(
     dist_reward = min(0.005, 0.20 * history_dist)
 
     # 终点附近奖励
-    cone_reward = 0.3 * (0.3 - end_dist) if end_dist < 0.3 else 0.0
+    # cone_reward = 0.3 * (0.3 - end_dist) if end_dist < 0.3 else 0.0
 
     # 访问重复惩罚
     repeat_penalty = visit_penalty
@@ -127,14 +132,19 @@ def reward_process(
         flash_gain = 0.1 * max(0.0, (d_before - d_after))
         flash_fail = -0.05 if d_after >= d_before else 0.0
 
-    end_success = 1.2 if end_dist < 1e-3 else 0.0
+    # end_success = 1.5 if end_dist < 1e-3 else 0.0
+    # treasure_reward = 0.5 * treasure_gain
+
+    buff_reward = 0.2 * buff_gain
+
     
     total = (step_reward + dist_reward + cone_reward + repeat_penalty + 
             turn_penalty + straight_bonus + flash_cost + flash_gain + 
-            flash_fail + stuck_penalty + end_success +
-            near_goal_penalty + corner_reward)
+            flash_fail + stuck_penalty +
+            near_goal_penalty + corner_reward + buff_reward +
+            shape + one_time + end_pen)
 
-    return [np.clip(total, -1.5, 1.5)]
+    return [np.clip(total, -Config.REWARD_CLIP, Config.REWARD_CLIP)]
 
 
 @attached

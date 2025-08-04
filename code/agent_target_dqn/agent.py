@@ -38,6 +38,9 @@ class Agent(BaseAgent):
         self.last_action = -1
         self.win_history = []
 
+        # 用于计数
+        self.global_step = 0
+
     def update_win_rate(self, is_win):
         self.win_history.append(is_win)
         if len(self.win_history) > 100:
@@ -86,8 +89,8 @@ class Agent(BaseAgent):
         self.algorithm.model.load_state_dict(torch.load(model_file_path, map_location=self.algorithm.device))
         self.logger.info(f"load model {model_file_path} successfully")
 
-    def observation_process(self, obs, extra_info):
-        (feature_vec, legal_action, reward_list) = self.preprocessor.process([obs, extra_info], self.last_action)
+    def observation_process(self, obs, extra_info, global_step, done):
+        (feature_vec, legal_action, reward_list) = self.preprocessor.process([obs, extra_info], self.last_action, global_step, done)
         return ObsData(feature=feature_vec, legal_act=legal_action), reward_list
 
     def action_process(self, act_data):

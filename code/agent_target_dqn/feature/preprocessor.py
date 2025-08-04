@@ -58,6 +58,10 @@ class Preprocessor:
         self.map_w = getattr(Config, "MAP_WIDTH", 128)
         self.map_h = getattr(Config, "MAP_HEIGHT",128)
 
+        # 宝箱与加速
+        self.prev_treasure_count = 0
+        self.prev_buff_count = 0
+
         self.reset()
 
 
@@ -75,6 +79,8 @@ class Preprocessor:
         self.visit_counter.clear()
         self.prev_action_dir = None
         self.near_goal_steps = 0
+        self.prev_buff_count = 0
+        self.prev_buff_count = 0
 
     def _get_pos_feature(self, found, cur_pos, target_pos):
         relative_pos = tuple(y - x for x, y in zip(cur_pos, target_pos))
@@ -103,12 +109,54 @@ class Preprocessor:
         return feature
 
     def pb2struct(self, frame_state, last_action):
-        obs, extra_info = frame_state
+        obs, _ = frame_state
         self.step_no = obs["frame_state"]["step_no"]
 
+        # 闪现cd && buff_cd
         hero = obs["frame_state"]["heroes"][0]
         self.flash_cd = hero["talent"]["status"]
         self.cur_pos = (hero["pos"]["x"], hero["pos"]["z"])
+        self.buff_active = hero["speed_up"]              # 0/1是否在加速
+        self.buff_remain = hero["buff_remain_time"]      # 剩余Buff时间
+        self.buff_duration = 100       # buff总时间
+
+
+
+        # 奖励检测
+        cur_treasure_count = obs["score_info"]["treasure_collected_count"]
+        cur_buff_count = obs["score_info"]["buff_count"]
+        self.treasure_gain = cur_treasure_count - self.prev_treasure_count
+        self.buff_gain = cur_buff_count - self.prev_buff_count
+        self.prev_treasure_count = cur_treasure_count
+        self.prev_buff_count = cur_buff_count
+
+        # 寻找宝箱
+        visible_treasures = [org for org in obs["frame_state"]["organs"] 
+                              if org["sub_type"] == 1 and org["status"] == 1]
+        if visible_treasures:
+            # 最近宝箱
+            nearest = min(visible_treasures, key=lambda o: 
+                          (o["pos"]["x"]-self.cur_pos[0])**2 + (o["pos"]["z"]-self.cur_pos[1])**2)
+            target = (nearest["pos"]["x"], nearest["pos"]["z"])
+            self.feature_treasure = self._get_pos_feature(1, self.cur_pos, target)
+            self.cur_treasure_dist = np.linalg.norm(np.array(self.cur_pos) - np.array(target))
+        else:
+            # 未发现宝箱
+            self.feature_treasure = np.concatenate([
+                [0.0], np.zeros(8), np.zeros(2), np.zeros(2), [1.0]
+            ], dtype=np.float32)
+            self.cur_treasure_dist = None
+        # 寻找Buff
+        buff_obj = next((org for org in obs["frame_state"]["organs"] 
+                         if org["sub_type"] == 2 and org["status"] == 1), None)
+        if buff_obj:
+            bpos = (buff_obj["pos"]["x"], buff_obj["pos"]["z"])
+            self.feature_buff = self._get_pos_feature(1, self.cur_pos, bpos)
+        else:
+            self.feature_buff = np.concatenate([
+                [0.0], np.zeros(8), np.zeros(2), np.zeros(2), [1.0]
+            ], dtype=np.float32)
+
 
         # _is_free准备数据
         self.local_map = np.array(
@@ -175,7 +223,7 @@ class Preprocessor:
         self.move_usable = True
         self.last_action = last_action
 
-    def process(self, frame_state, last_action):
+    def process(self, frame_state, last_action, global_step, done):
 
         self.pb2struct(frame_state, last_action)
         legal_action = self.get_legal_action()
@@ -188,11 +236,6 @@ class Preprocessor:
                     for dx, dz in offsets]
         # ------------------------------------------------------
 
-        # # ------------------------射限特征----------------------
-        # fwd_dir = (self.last_action % 8) if 0 <= self.last_action < 16 else None
-        # ray_feat = [self._cast_ray(self.cur_pos, self._dir_lookup[fwd_dir])
-        #             if fwd_dir is not None else 1.0]
-        # # -----------------------------------------------------
 
         # ------------------------射限特征----------------------
         ray_feats = []
@@ -205,20 +248,31 @@ class Preprocessor:
             self.cur_pos_norm,
             self.feature_end_pos,
             self.feature_history_pos,
+            self.feature_treasure,
+            self.feature_buff,
             legal_action,
             walkable,
             ray_feats,
         ])        
+
 
         # -----------------闪现奖励------------------
         end_dist = self.feature_end_pos[-1]
         r_flash = self.flash_range / self.max_map_dist
         flash_used = (last_action >= Config.DIM_OF_ACTION_DIRECTION)
         d_after = max(0.0, end_dist - r_flash) if flash_used else end_dist
-        extra_feats = np.array([r_flash, end_dist, d_after, self.flash_cd / 100], dtype=np.float32)
-
-        feature = np.concatenate([base_feature, extra_feats], axis=0)
         # ------------------------------------------
+
+
+        # ------------------buff--------------------
+        buff_time_norm = (self.buff_remain / self.buff_duration) if self.buff_duration > 0 else 0.0
+        # ------------------------------------------
+
+
+
+        extra_feats = np.array([r_flash, end_dist, d_after, self.flash_cd / 100,
+                                float(self.buff_active), buff_time_norm], dtype=np.float32)
+        feature = np.concatenate([base_feature, extra_feats], axis=0)
 
 
         # ---------------访问次数惩罚--------------- 
@@ -239,7 +293,6 @@ class Preprocessor:
         # -----------------------------------------
 
 
-
         # --------------- Anti-Stuck---------------
         stuck_penalty = 0.0
 
@@ -258,6 +311,7 @@ class Preprocessor:
                 stuck_penalty -= self.loop_penalty
         # ------------------------------------------
 
+
         # ---------------终点附近徘徊惩罚---------------
         NEAR_GOAL_TH = 0.05
         MAX_LOITER    = 10
@@ -267,6 +321,7 @@ class Preprocessor:
             self.near_goal_steps = 0
         near_goal_penalty = -0.05 * min(self.near_goal_steps, MAX_LOITER)
         # ---------------------------------------------
+
 
         # -----------------死角逃脱奖励----------------
         if last_action < 8:
@@ -291,6 +346,49 @@ class Preprocessor:
         # --------------------------------------------
 
 
+        # ----------------------潜势函数 宝箱 && 终点-------------------------
+        if global_step < Config.S1_STEPS:
+            e, t = 1.0, 0.0
+        elif global_step < Config.S2_STEPS:
+            e = 1 - (global_step - Config.S1_STEPS) / (Config.S2_STEPS - Config.S1_STEPS)
+            t = 1 - e
+        else:
+            e, t = 0.0, 1.0
+        shape_T, shape_E = 0.0, 0.0
+        gamma_0 = 0.99
+        # 宝箱
+        if getattr(self, 'prev_treasure_dist', None) is not None and self.cur_treasure_dist is not None:
+            shape_T = 0.5 * (gamma_0*(-self.cur_treasure_dist) + self.prev_treasure_dist)
+        self.prev_treasure_dist = self.cur_treasure_dist or getattr(self, 'prev_treasure_dist', 0.0)
+        # 终点
+        end_global_dist = np.linalg.norm(np.array(self.cur_pos) - np.array(self.end_pos))
+        if getattr(self, 'prev_end_dist', None) is not None:
+            shape_E = Config.TREASURE_REWARD * (gamma_0*(-end_global_dist) - self.prev_end_dist)
+        self.prev_treasure_dist = self.cur_treasure_dist
+        self.prev_end_dist      = -end_global_dist
+        shape = t * shape_T + e * shape_E
+        # -------------------------------------------------------------------
+
+
+        # ------------------一次性宝箱奖励&终点奖惩-----------------------
+        one_time = 1.0 * max(0, self.treasure_gain) * t
+        if done:
+            if t > 0.0 and obs["score_info"]["treasure_collected_count"] < Config.TOTAL_TREASURES:
+                end_pen = Config.INCOMPLETE_END_PENALTY * t
+            else:
+                end_pen = Config.GOAL_REWARD * e
+        else:
+            end_pen = 0.0
+        # ----------------------------------------------------------
+
+
+        # ------------------统一奖励传入--------------------
+        # 将原来的终点附近徘徊惩罚以及终点附近奖励乘上系数进入
+        near_goal_penalty = near_goal_penalty * e
+        cone_reward = 0.3 * (0.3 - end_dist) if end_dist < 0.3 else 0.0
+        cone_reward = cone_reward * e
+        #--------------------------------------------------
+
         reward = reward_process(
             end_dist,
             self.feature_history_pos[-1],
@@ -301,8 +399,16 @@ class Preprocessor:
             d_after,
             stuck_penalty,
             near_goal_penalty,
-            corner_reward
+            cone_reward,
+            corner_reward,
+            self.treasure_gain,
+            self.buff_gain,
+            shape,
+            one_time,
+            end_pen,
         )
+        
+
 
         return (
             feature,
