@@ -57,7 +57,7 @@ class Agent(BaseAgent):
 
     @exploit_wrapper
     def exploit(self, observation):
-        obs_data, _ = self.observation_process(observation["obs"], observation["extra_info"])
+        obs_data, _ = self.observation_process(observation["obs"], observation["extra_info"], global_step=0, done=False)
         act_data = self.algorithm.predict_detail([obs_data], exploit_flag=True)
         act = self.action_process(act_data[0])
         return act

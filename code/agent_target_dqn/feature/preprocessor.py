@@ -62,6 +62,13 @@ class Preprocessor:
         self.prev_treasure_count = 0
         self.prev_buff_count = 0
 
+        # 全局特征利用
+        self.prev_score = 0.0
+        self.prev_treasure_phi = 0.0
+        self.prev_end_phi = 0.0
+        self.visible_treasures = []
+
+
         self.reset()
 
 
@@ -80,7 +87,12 @@ class Preprocessor:
         self.prev_action_dir = None
         self.near_goal_steps = 0
         self.prev_buff_count = 0
-        self.prev_buff_count = 0
+        self.prev_treasure_count = 0
+
+        self.prev_score = 0
+        self.prev_treasure_phi = 0.0
+        self.prev_end_phi = 0.0
+        self.visible_treasures = []
 
     def _get_pos_feature(self, found, cur_pos, target_pos):
         relative_pos = tuple(y - x for x, y in zip(cur_pos, target_pos))
@@ -108,6 +120,8 @@ class Preprocessor:
         )
         return feature
 
+
+
     def pb2struct(self, frame_state, last_action):
         obs, _ = frame_state
         self.step_no = obs["frame_state"]["step_no"]
@@ -130,9 +144,17 @@ class Preprocessor:
         self.prev_treasure_count = cur_treasure_count
         self.prev_buff_count = cur_buff_count
 
+        # 全局进度特征
+        cur_score = obs["score_info"]["score"]
+        self.score_delta = self.prev_score - cur_score
+        self.prev_score = cur_score
+
         # 寻找宝箱
         visible_treasures = [org for org in obs["frame_state"]["organs"] 
                               if org["sub_type"] == 1 and org["status"] == 1]
+        self.visible_treasures = [
+            (org["pos"]["x"], org["pos"]["z"]) for org in visible_treasures
+        ]
         if visible_treasures:
             # 最近宝箱
             nearest = min(visible_treasures, key=lambda o: 
@@ -225,6 +247,8 @@ class Preprocessor:
 
     def process(self, frame_state, last_action, global_step, done):
 
+        obs, _ = frame_state
+
         self.pb2struct(frame_state, last_action)
         legal_action = self.get_legal_action()
 
@@ -269,10 +293,72 @@ class Preprocessor:
         # ------------------------------------------
 
 
+        # extra_feats = np.array([r_flash, end_dist, d_after, self.flash_cd / 100,
+        #                         float(self.buff_active), buff_time_norm], dtype=np.float32)
 
-        extra_feats = np.array([r_flash, end_dist, d_after, self.flash_cd / 100,
-                                float(self.buff_active), buff_time_norm], dtype=np.float32)
-        feature = np.concatenate([base_feature, extra_feats], axis=0)
+        
+        # --------------步数宝箱分数全局信息----------------
+        step_ratio = obs["score_info"]["step_no"] /  Config.MAX_STEP
+        treasure_ratio = obs["score_info"]["treasure_collected_count"] / Config.TOTAL_TREASURES
+        score_delta = self.score_delta
+        talent_count = obs["score_info"]["talent_count"] / 100
+        # ------------------------------------------------
+
+        extra_feats = [
+            r_flash,
+            end_dist,
+            d_after,
+            self.flash_cd / 100,
+            float(self.buff_active),
+            buff_time_norm,
+            # 全局进度
+            step_ratio,
+            treasure_ratio,
+            score_delta,
+            talent_count,
+        ]
+        
+        
+        # --------------------障碍密度-------------------
+        h, w = self.local_map.shape
+        center_y, center_x = h // 2, w // 2
+        r = 3
+        y0 = max(0, center_y - r)
+        y1 = min(h, center_y + r + 1)
+        x0 = max(0, center_x - r)
+        x1 = min(w, center_x + r + 1)
+        submap = self.local_map[y0:y1, x0:x1]
+        if submap.size > 0:
+            density_7x7 = float(np.mean(submap != 0))
+        else:
+            density_7x7 = 0.0
+        extra_feats.append(density_7x7)
+        # -----------------------------------------------
+
+
+        # -----------------多宝箱–终点联合特征----------------
+        cx, cz = self.cur_pos
+        t2e_feats = []
+        # 距离排序
+        vt = sorted(self.visible_treasures,
+                    key=lambda p: (p[0]-cx)**2+(p[1]-cz)**2)[:3]
+        for bx, bz in vt:
+            dx1, dz1 = bx-cx, bz-cz
+            dx2, dz2 = self.end_pos[0]-bx, self.end_pos[1]-bz if self.end_pos else (0,0)
+            d1_norm = math.hypot(dx1, dz1)/self.max_map_dist
+            d2_norm = math.hypot(dx2, dz2)/self.max_map_dist
+            cos_ang = (dx1*dx2 + dz1*dz2) / (math.hypot(dx1,dz1)*math.hypot(dx2,dz2)+1e-6)
+            t2e_feats += [d1_norm, d2_norm, cos_ang]
+        while len(t2e_feats)<9: t2e_feats.append(0.0)
+        # --------------------------------------------------
+
+
+        feature = np.concatenate([
+            base_feature,
+            np.array(extra_feats, dtype=np.float32),
+            np.array(t2e_feats, dtype=np.float32),
+        ], axis=0)
+        
 
 
         # ---------------访问次数惩罚--------------- 
@@ -347,34 +433,61 @@ class Preprocessor:
 
 
         # ----------------------潜势函数 宝箱 && 终点-------------------------
+
+        # 基本计算逻辑
         if global_step < Config.S1_STEPS:
             e, t = 1.0, 0.0
         elif global_step < Config.S2_STEPS:
             e = 1 - (global_step - Config.S1_STEPS) / (Config.S2_STEPS - Config.S1_STEPS)
-            t = 1 - e
         else:
-            e, t = 0.0, 1.0
-        shape_T, shape_E = 0.0, 0.0
+            e, t= 0.0, 1.0
         gamma_0 = 0.99
-        # 宝箱
-        if getattr(self, 'prev_treasure_dist', None) is not None and self.cur_treasure_dist is not None:
-            shape_T = 0.5 * (gamma_0*(-self.cur_treasure_dist) + self.prev_treasure_dist)
-        self.prev_treasure_dist = self.cur_treasure_dist or getattr(self, 'prev_treasure_dist', 0.0)
-        # 终点
-        end_global_dist = np.linalg.norm(np.array(self.cur_pos) - np.array(self.end_pos))
-        if getattr(self, 'prev_end_dist', None) is not None:
-            shape_E = Config.TREASURE_REWARD * (gamma_0*(-end_global_dist) - self.prev_end_dist)
-        self.prev_treasure_dist = self.cur_treasure_dist
-        self.prev_end_dist      = -end_global_dist
+
+        # 加大终点力度 && 拿完宝箱兜底
+        e = max(e, Config.E_MIN)
+        treasure_left = Config.TOTAL_TREASURES - obs["score_info"]["treasure_collected_count"]
+        if treasure_left == 0:
+            e = 1.0
+        elif treasure_left <= 2:
+            e = max(e, 0.6)
+        t = 1 - e
+        
+        # 宝箱机制
+        shape_T = 0.0
+        if self.cur_treasure_dist is not None:
+            cur_td_norm = self.cur_treasure_dist / self.max_map_dist
+            cur_phi_t = -cur_td_norm
+            prev_phi_t = getattr(self, "prev_treasure_phi", 0.0)
+            shape_T     = Config.TREASURE_REWARD * (gamma_0 * cur_phi_t - prev_phi_t)
+            self.prev_treasure_phi = cur_phi_t
+        else:
+            self.prev_treasure_phi = 0.0
+        
+        shape_E = 0.0
+        if self.end_pos is not None:
+            raw_ed      = np.linalg.norm(np.array(self.cur_pos) - np.array(self.end_pos))
+            cur_ed_norm = raw_ed / self.max_map_dist
+            cur_phi_e   = -cur_ed_norm
+            prev_phi_e  = getattr(self, "prev_end_phi", 0.0)
+            shape_E     = Config.GOAL_REWARD * (gamma_0 * cur_phi_e - prev_phi_e)
+            self.prev_end_phi = cur_phi_e
+        else:
+            self.prev_end_phi = 0.0
+
         shape = t * shape_T + e * shape_E
         # -------------------------------------------------------------------
 
 
         # ------------------一次性宝箱奖励&终点奖惩-----------------------
-        one_time = 1.0 * max(0, self.treasure_gain) * t
+        one_time = Config.TREASURE_IMMEDIATE_REWARD * max(0, self.treasure_gain) * t
         if done:
+            # 宝箱训练中，未收集完宝箱到终点
             if t > 0.0 and obs["score_info"]["treasure_collected_count"] < Config.TOTAL_TREASURES:
                 end_pen = Config.INCOMPLETE_END_PENALTY * t
+            # 宝箱训练中，收集完宝箱到终点
+            elif t > 0.0 and obs["score_info"]["treasure_collected_count"] == Config.TOTAL_TREASURES:
+                end_pen = Config.GOAL_REWARD * e + Config.PERFECT_REWARD * t
+            # 终点训练奖励
             else:
                 end_pen = Config.GOAL_REWARD * e
         else:
@@ -408,7 +521,6 @@ class Preprocessor:
             end_pen,
         )
         
-
 
         return (
             feature,
