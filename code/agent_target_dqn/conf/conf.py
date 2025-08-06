@@ -22,9 +22,10 @@ class Config:
         14,
         14,
         8 + 8,
-        6,
+        11,
         8,
         8,
+        9,   # 多宝箱-终点联合特征3*3
     ]
 
     FEATURE_SPLIT_SHAPE = FEATURES
@@ -53,11 +54,11 @@ class Config:
 
     # Update frequency of target network
     # target网络的更新频率
-    TARGET_UPDATE_FREQ = 500
+    TARGET_UPDATE_FREQ = 800
 
     # Discount factor GAMMA in RL
     # RL中的回报折扣GAMMA
-    GAMMA = 0.97
+    GAMMA = 0.95
 
     # epsilon
     EPSILON_MIN = 0.05
@@ -66,23 +67,26 @@ class Config:
 
     # Initial learning rate
     # 初始的学习率
-    START_LR = 1e-4
+    START_LR = 5e-5
 
     # 训练调度
-    S1_STEPS = 1000
-    S2_STEPS = 3000
+    S1_STEPS = 2500
+    S2_STEPS = 8000
+    MAX_STEP = 2000
 
     # 宝箱
     TOTAL_TREASURES = 8
 
     # 潜势函数
-    BASE_W_T = 0.5
-    BASE_W_E = 1.0
+    TREASURE_REWARD = 5.0
+    TREASURE_IMMEDIATE_REWARD = 5.0
 
-    TREASURE_REWARD = 1.0
-
-    GOAL_REWARD = 3.0
-    INCOMPLETE_END_PENALTY = 2.0
+    GOAL_REWARD = 5.0
+    INCOMPLETE_END_PENALTY = -5.0
+    PERFECT_REWARD = 5.0
 
     REWARD_CLIP = 5.0
+
+    E_MIN = 0.22 
+
 

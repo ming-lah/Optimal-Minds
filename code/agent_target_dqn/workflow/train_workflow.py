@@ -124,6 +124,8 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor, epoch):
 
                 step += 1
 
+                done = terminated or truncated or (max_step_no > 0 and step >= max_step_no)
+
                 # Feature processing
                 # 特征处理
                 _obs_data, reward_list = agent.observation_process(_obs, _extra_info, global_step=agent.global_step, done=done)
@@ -144,7 +146,7 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor, epoch):
                     logger.info(
                         f"Game terminated! step_no:{step_no} score:{game_info['total_score']} win_rate:{win_rate}"
                     )
-                done = terminated or truncated or (max_step_no > 0 and step >= max_step_no)
+                # done = terminated or truncated or (max_step_no > 0 and step >= max_step_no)
 
                 # Construct task frames to prepare for sample construction
                 # 构造任务帧，为构造样本做准备
@@ -167,12 +169,18 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor, epoch):
                 if done:
                     if monitor:
                         if agent.global_step < Config.S1_STEPS:
-                            t, e = 1.0, 0.0
+                            e, t = 1.0, 0.0
                         elif agent.global_step < Config.S2_STEPS:
-                            t = 1 - (agent.global_step - Config.S1_STEPS) / (Config.S2_STEPS - Config.S1_STEPS)
-                            e = 1 - t
+                            e = 1 - (agent.global_step - Config.S1_STEPS) / (Config.S2_STEPS - Config.S1_STEPS)
                         else:
-                            t, e = 0.0, 1.0
+                            e, t = 0.0, 1.0
+                        e = max(e, Config.E_MIN)
+                        treasures_left = Config.TOTAL_TREASURES - obs["score_info"]["treasure_collected_count"]
+                        if treasures_left == 0:
+                            e = 1.0
+                        elif treasures_left <= 2:
+                            e = max(e, 0.6)
+                        t = 1 - e
                         monitor_data = {
                             "diy_1": win_rate,
                             "diy_2": t,

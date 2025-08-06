@@ -44,7 +44,7 @@ end_random = true
 # Boolean value, true indicates a random acceleration gain position, false indicates using the buff field to generate a fixed acceleration gain position.
 # 加速增益是否随机。
 # 布尔值，true表示随机加速增益位置，false表示使用buff字段生成固定加速增益位置。
-buff_random = true
+buff_random = false
 
 # The number of cooling steps for the acceleration buff.
 # The acceleration gain will enter a cooling state after being collected and will be reactivated after the cooling state ends.
