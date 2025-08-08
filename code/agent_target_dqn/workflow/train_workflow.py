@@ -181,6 +181,16 @@ def run_episodes(n_episode, env, agent, usr_conf, logger, monitor, epoch):
                         elif treasures_left <= 2:
                             e = max(e, 0.6)
                         t = 1 - e
+
+                        # if obs["score_info"]["treasure_collected_count"] < Config.TREASURES_BEFORE_RETURN:
+                        #     t, e = 1.0, 0.0
+                        # elif global_step < Config.S1_STEPS:
+                        #     frac = global_step / Config.S1_STEPS
+                        #     t = max(Config.T_MIN, 1.0 - frac)
+                        #     e = max(Config.E_MIN, frac)
+                        # else:
+                        #     t, e = Config.T_MIN, 1.0
+
                         monitor_data = {
                             "diy_1": win_rate,
                             "diy_2": t,

@@ -116,7 +116,7 @@ def train():
         train_success = check_train_success_by_model_file()
         process_done = check_process_stop_done()
 
-        # If an error log is generated, exit early
+        # If an error log is generated, exit early 
         # 如果有错误日志产生, 提前退出
         if error_msg:
             time.sleep(5)

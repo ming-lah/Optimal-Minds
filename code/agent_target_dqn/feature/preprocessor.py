@@ -446,11 +446,21 @@ class Preprocessor:
         # 加大终点力度 && 拿完宝箱兜底
         e = max(e, Config.E_MIN)
         treasure_left = Config.TOTAL_TREASURES - obs["score_info"]["treasure_collected_count"]
+        collected = obs["score_info"]["treasure_collected_count"]
         if treasure_left == 0:
             e = 1.0
-        elif treasure_left <= 2:
+        elif treasure_left == Config.TOTAL_TREASURES - 1:
             e = max(e, 0.6)
         t = 1 - e
+
+        # if obs["score_info"]["treasure_collected_count"] < Config.TREASURES_BEFORE_RETURN:
+        #     t, e = 1.0, 0.0
+        # elif global_step < Config.S1_STEPS:
+        #     frac = global_step / Config.S1_STEPS
+        #     t = max(Config.T_MIN, 1.0 - frac)
+        #     e = max(Config.E_MIN, frac)
+        # else:
+        #     t, e = Config.T_MIN, 1.0
         
         # 宝箱机制
         shape_T = 0.0
@@ -480,9 +490,13 @@ class Preprocessor:
 
         # ------------------一次性宝箱奖励&终点奖惩-----------------------
         one_time = Config.TREASURE_IMMEDIATE_REWARD * max(0, self.treasure_gain) * t
+        if collected <= Config.TOTAL_TREASURES:
+            final_top3_reward = Config.FINAL_TOP3_REWARD.get(collected, 0.0) * t
+        else:
+            final_top3_reward = 0.0
         if done:
             # 宝箱训练中，未收集完宝箱到终点
-            if t > 0.0 and obs["score_info"]["treasure_collected_count"] < Config.TOTAL_TREASURES:
+            if t > 0.0 and obs["score_info"]["treasure_collected_count"] <= Config.TOTAL_TREASURES - 2:
                 end_pen = Config.INCOMPLETE_END_PENALTY * t
             # 宝箱训练中，收集完宝箱到终点
             elif t > 0.0 and obs["score_info"]["treasure_collected_count"] == Config.TOTAL_TREASURES:
@@ -491,7 +505,15 @@ class Preprocessor:
             else:
                 end_pen = Config.GOAL_REWARD * e
         else:
-            end_pen = 0.0
+            end_pen = 0.0  # 不能够改成负值
+
+        # if done:
+        #     if obs["score_info"]["treasure_collected_count"] < Config.TOTAL_TREASURES:
+        #         end_pen = Config.INCOMPLETE_END_PENALTY * e
+        #     else:
+        #         end_pen = Config.GOAL_REWARD * e + Config.PERFECT_REWARD * t
+        # else:
+        #     end_pen = -1.0 * e
         # ----------------------------------------------------------
 
 
@@ -519,6 +541,7 @@ class Preprocessor:
             shape,
             one_time,
             end_pen,
+            final_top3_reward,
         )
         
 
