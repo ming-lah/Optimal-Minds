@@ -437,30 +437,29 @@ class Preprocessor:
         # 基本计算逻辑
         if global_step < Config.S1_STEPS:
             e, t = 1.0, 0.0
-        elif global_step < Config.S2_STEPS:
-            e = 1 - (global_step - Config.S1_STEPS) / (Config.S2_STEPS - Config.S1_STEPS)
+        elif global_step < Config.S2_STEPS + 3000:
+            e = 1 - (global_step - Config.S1_STEPS) / (Config.S2_STEPS - Config.S1_STEPS + 3000)
         else:
             e, t= 0.0, 1.0
         gamma_0 = 0.99
 
+        # 动态奖励系数计算
+        treasure_left = Config.TOTAL_TREASURES - obs["score_info"]["treasure_collected_count"]
+        if treasure_left >= 5:
+            dynamic_weight = 1.2 + 0.1 * (8 - treasure_left) ** 1.3
+        elif treasure_left >= 3:
+            dynamic_weight = 1.8 + 0.3 * (5 - treasure_left) ** 1.3
+        else:
+            dynamic_weight = 3.0 + 1.5 * (2 - treasure_left) ** 1.5  # 剩1~2个时最大激励
+
+
         # 加大终点力度 && 拿完宝箱兜底
         e = max(e, Config.E_MIN)
-        treasure_left = Config.TOTAL_TREASURES - obs["score_info"]["treasure_collected_count"]
-        collected = obs["score_info"]["treasure_collected_count"]
         if treasure_left == 0:
             e = 1.0
-        elif treasure_left == Config.TOTAL_TREASURES - 1:
+        elif treasure_left <= 2:
             e = max(e, 0.6)
         t = 1 - e
-
-        # if obs["score_info"]["treasure_collected_count"] < Config.TREASURES_BEFORE_RETURN:
-        #     t, e = 1.0, 0.0
-        # elif global_step < Config.S1_STEPS:
-        #     frac = global_step / Config.S1_STEPS
-        #     t = max(Config.T_MIN, 1.0 - frac)
-        #     e = max(Config.E_MIN, frac)
-        # else:
-        #     t, e = Config.T_MIN, 1.0
         
         # 宝箱机制
         shape_T = 0.0
@@ -468,7 +467,7 @@ class Preprocessor:
             cur_td_norm = self.cur_treasure_dist / self.max_map_dist
             cur_phi_t = -cur_td_norm
             prev_phi_t = getattr(self, "prev_treasure_phi", 0.0)
-            shape_T     = Config.TREASURE_REWARD * (gamma_0 * cur_phi_t - prev_phi_t)
+            shape_T     = (Config.TREASURE_REWARD * dynamic_weight) * (gamma_0 * cur_phi_t - prev_phi_t)
             self.prev_treasure_phi = cur_phi_t
         else:
             self.prev_treasure_phi = 0.0
@@ -489,31 +488,34 @@ class Preprocessor:
 
 
         # ------------------一次性宝箱奖励&终点奖惩-----------------------
-        one_time = Config.TREASURE_IMMEDIATE_REWARD * max(0, self.treasure_gain) * t
-        if collected <= Config.TOTAL_TREASURES:
-            final_top3_reward = Config.FINAL_TOP3_REWARD.get(collected, 0.0) * t
-        else:
-            final_top3_reward = 0.0
+        one_time = (Config.TREASURE_IMMEDIATE_REWARD * dynamic_weight) * max(0, self.treasure_gain) * t
+        # if done:
+        #     # 宝箱训练中，未收集完宝箱到终点
+        #     if t > 0.0 and obs["score_info"]["treasure_collected_count"] <= Config.TOTAL_TREASURES - 2:
+        #         end_pen = Config.INCOMPLETE_END_PENALTY * t
+        #     # 宝箱训练中，收集完宝箱到终点
+        #     elif t > 0.0 and obs["score_info"]["treasure_collected_count"] == Config.TOTAL_TREASURES:
+        #         end_pen = Config.GOAL_REWARD * e + Config.PERFECT_REWARD * t
+        #     # 终点训练奖励
+        #     else:
+        #         end_pen = Config.GOAL_REWARD * e
+        # else:
+        #     end_pen = 0.0
+
+        # 终点奖惩
         if done:
-            # 宝箱训练中，未收集完宝箱到终点
-            if t > 0.0 and obs["score_info"]["treasure_collected_count"] <= Config.TOTAL_TREASURES - 2:
-                end_pen = Config.INCOMPLETE_END_PENALTY * t
-            # 宝箱训练中，收集完宝箱到终点
-            elif t > 0.0 and obs["score_info"]["treasure_collected_count"] == Config.TOTAL_TREASURES:
-                end_pen = Config.GOAL_REWARD * e + Config.PERFECT_REWARD * t
-            # 终点训练奖励
+            if t > 0:
+                if treasure_left > 3:
+                    end_pen = Config.INCOMPLETE_END_PENALTY * t * 0.8
+                elif treasure_left > 0:
+                    end_pen = Config.INCOMPLETE_END_PENALTY * t * (0.6 - 0.1*dynamic_weight)
+                else:
+                    perfect_bonus = Config.PERFECT_REWARD * (1 + 2 * dynamic_weight)
+                    end_pen = Config.GOAL_REWARD * e + perfect_bonus * t
             else:
                 end_pen = Config.GOAL_REWARD * e
         else:
-            end_pen = 0.0  # 不能够改成负值
-
-        # if done:
-        #     if obs["score_info"]["treasure_collected_count"] < Config.TOTAL_TREASURES:
-        #         end_pen = Config.INCOMPLETE_END_PENALTY * e
-        #     else:
-        #         end_pen = Config.GOAL_REWARD * e + Config.PERFECT_REWARD * t
-        # else:
-        #     end_pen = -1.0 * e
+            end_pen = 0.0
         # ----------------------------------------------------------
 
 
@@ -541,10 +543,8 @@ class Preprocessor:
             shape,
             one_time,
             end_pen,
-            final_top3_reward,
         )
         
-
         return (
             feature,
             legal_action,

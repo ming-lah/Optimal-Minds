@@ -104,8 +104,7 @@ def reward_process(
     treasure_gain=0, buff_gain=0,
     shape: float = 0.0,
     one_time: float = 0.0,
-    end_pen: float = 0.0,
-    final_top3_reward: float = 0.0,):
+    end_pen: float = 0.0):
 
     # step reward
     # 步数奖励
@@ -122,8 +121,8 @@ def reward_process(
     repeat_penalty = visit_penalty
 
     # 转向惩罚/直线奖励
-    turn_penalty = -0.006 * (turn_angle / 90.)
-    straight_bonus = 0.006 if turn_angle == 0 else 0.0
+    turn_penalty = -0.005 * (turn_angle / 90.)
+    straight_bonus = 0.005 if turn_angle == 0 else 0.0
 
     # 闪现奖励
     flash_cost = -0.05 if flash_used else 0.0
@@ -143,7 +142,7 @@ def reward_process(
             turn_penalty + straight_bonus + flash_cost + flash_gain + 
             flash_fail + stuck_penalty +
             near_goal_penalty + corner_reward + buff_reward +
-            shape + one_time + end_pen + final_top3_reward)
+            shape + one_time + end_pen)
 
     return [np.clip(total, -Config.REWARD_CLIP, Config.REWARD_CLIP)]
 
