@@ -70,23 +70,23 @@ class Config:
     START_LR = 5e-5
 
     # 训练调度
-    S1_STEPS = 2500
-    S2_STEPS = 8000
+    S1_STEPS = 3000
+    S2_STEPS = 15000
     MAX_STEP = 2000
 
     # 宝箱
     TOTAL_TREASURES = 8
 
     # 潜势函数
-    TREASURE_REWARD = 5.0
-    TREASURE_IMMEDIATE_REWARD = 5.0
+    TREASURE_REWARD = 10.0
+    TREASURE_IMMEDIATE_REWARD = 8.0
 
     GOAL_REWARD = 5.0
-    INCOMPLETE_END_PENALTY = -5.0
-    PERFECT_REWARD = 5.0
+    INCOMPLETE_END_PENALTY = -9.0
+    PERFECT_REWARD = 4.0
 
-    REWARD_CLIP = 5.0
+    REWARD_CLIP = 10.0
 
-    E_MIN = 0.22 
+    E_MIN = 0.20 
 
 

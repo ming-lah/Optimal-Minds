@@ -9,7 +9,6 @@ Author: Tencent AI Arena Authors
 
 import torch
 import torch.nn as nn
-import numpy as np
 from typing import List
 from agent_target_dqn.conf.conf import Config
 
@@ -33,6 +32,7 @@ class DuelingAttentionDQN(nn.Module):
         super().__init__()
         self.obs_dim = state_shape
         self.act_dim = action_shape
+        self.pool_gate = nn.Parameter(torch.tensor(0.5))
 
         # 1) token projection
         self.token_proj = nn.ModuleList([
@@ -65,7 +65,10 @@ class DuelingAttentionDQN(nn.Module):
 
         # 自注意力编码
         enc = self.transformer(tokens)               # [B, seq_len, d_model]
-        feat = enc[:, 0, :]                          # 取第 0 个 token 做汇聚
+        cls = enc[:, 0, :]
+        mean = enc[:, 1:, :].mean(dim=1)
+        gate = torch.sigmoid(self.pool_gate)
+        feat = cls + gate * mean                          # 取第 0 个 token 做汇聚
 
         # Dueling
         V = self.value_stream(feat)                  # [B, 1]

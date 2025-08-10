@@ -108,11 +108,11 @@ def reward_process(
 
     # step reward
     # 步数奖励
-    step_reward = -0.002
+    step_reward = -0.01
 
     # distance reward
     # 距离奖励
-    dist_reward = min(0.005, 0.20 * history_dist)
+    dist_reward = min(0.05, 0.25 * history_dist)
 
     # 终点附近奖励
     # cone_reward = 0.3 * (0.3 - end_dist) if end_dist < 0.3 else 0.0
@@ -121,16 +121,16 @@ def reward_process(
     repeat_penalty = visit_penalty
 
     # 转向惩罚/直线奖励
-    turn_penalty = -0.002 * (turn_angle / 90.)
-    straight_bonus = 0.002 if turn_angle == 0 else 0.0
+    turn_penalty = -0.005 * (turn_angle / 90.)
+    straight_bonus = 0.005 if turn_angle == 0 else 0.0
 
     # 闪现奖励
-    flash_cost = -0.02 if flash_used else 0.0
+    flash_cost = -0.05 if flash_used else 0.0
     flash_gain = 0.0
     flash_fail = 0.0
     if flash_used and d_before is not None and d_after is not None:
-        flash_gain = 0.1 * max(0.0, (d_before - d_after))
-        flash_fail = -0.05 if d_after >= d_before else 0.0
+        flash_gain = 0.2 * max(0.0, (d_before - d_after))
+        flash_fail = -0.10 if d_after >= d_before else 0.0
 
     # end_success = 1.5 if end_dist < 1e-3 else 0.0
     # treasure_reward = 0.5 * treasure_gain
